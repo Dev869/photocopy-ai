@@ -1,0 +1,43 @@
+# Large binaries / raws
+*.NEF
+*.ARW
+*.DNG
+*.acr
+*.xmp
+!benchmark-import/**/*.xmp
+*.nef
+
+# Python
+work/.venv/
+**/__pycache__/
+*.pyc
+
+# Data / caches / model artifacts (regenerable or huge)
+work/index/
+work/dataset/
+work/proxies/
+work/thumbs/
+work/tmp_proxies/
+work/settings_norm/
+work/benchmark/
+work/catalog.mcat
+work/wfindex.db
+work/*.npy
+work/*.npz
+work/agent.log
+work/state.json
+work/config.json
+
+# Swift build
+menubar/.build/
+
+# Worktrees
+.worktrees/
+
+# OS / tooling
+.DS_Store
+.impeccable/
+work/wfindex.db-shm
+work/wfindex.db-wal
+work/catalog.mcat-shm
+work/catalog.mcat-wal

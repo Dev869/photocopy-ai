@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bridal Camera Agent — TODO</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1a1a1a; --bg: #fdfdfb; --dim: #777;
+          --card: #f2f1ec; --accent: #7a5c3e; --done: #4a7a4e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg: #e8e6e0; --bg: #171614; --dim: #999; --card: #23211e;
+            --accent: #c9a37c; --done: #8fbf93; } }
+  body { font: 16px/1.55 -apple-system, system-ui, sans-serif; color: var(--fg);
+         background: var(--bg); max-width: 780px; margin: 3rem auto; padding: 0 1.25rem; }
+  h1 { font-size: 1.5rem; } h2 { font-size: 1.1rem; margin-top: 2.2rem; color: var(--accent); }
+  .status { background: var(--card); border-radius: 10px; padding: .9rem 1.1rem; margin: 1.2rem 0; }
+  .status b { color: var(--done); }
+  ul { list-style: none; padding-left: 0; }
+  li { margin: .55rem 0; padding-left: 1.7rem; position: relative; }
+  li::before { content: "○"; position: absolute; left: 0; color: var(--dim); }
+  li.done { color: var(--dim); text-decoration: line-through; }
+  li.done::before { content: "●"; color: var(--done); }
+  li.human::after { content: "needs Devin"; font-size: .72rem; background: var(--accent);
+                    color: var(--bg); border-radius: 4px; padding: .1rem .4rem; margin-left: .5rem;
+                    text-decoration: none; display: inline-block; }
+  small { color: var(--dim); display: block; margin-top: .1rem; }
+  code { background: var(--card); padding: .1rem .35rem; border-radius: 4px; font-size: .85em; }
+</style>
+</head>
+<body>
+<h1>The Bridal Camera — Auto-Edit Agent</h1>
+
+<div class="status">
+  Engine A is <b>live end-to-end</b>: raw in → SigLIP2 kNN over 2,644 mined edits → blended
+  XMP sidecar out (masks/​<code>.acr</code> round-trip solved).
+  Leave-one-out, 1,034 raw picks: exposure MAE <b>0.51 stops</b>, temp <b>279 K</b>,
+  contrast <b>9.6</b>. Numbers are optimistic (same-wedding neighbors in index).
+  The real test is a held-out wedding, judged on renders.
+</div>
+
+<h2>Benchmark (decides everything)</h2>
+<ul>
+  <li class="done">Hold out one complete wedding from the index; predict all its raws</li>
+  <li class="human">Import predicted sidecars + judge renders vs your real edits
+    <small><code>benchmark-import/</code> is ready: 40 raws + predicted sidecars from the held-out 2025-01-04 wedding</small></li>
+  <li>Confidence report per image: neighbor distance → flag "would skip" shots</li>
+  <li class="done">Scene-consistent prediction: cluster by time+embedding, one edit per scene
+    <small>kills within-scene jitter (±0.46 stops, ±271 K → 0) at no MAE cost; now default in batch mode</small></li>
+  <li class="done">Preset system: retrieval filtered by your own Looks (<code>--look "Modern 08"</code>)
+    <small>history is already discrete: Artistic 05 ×366, Modern 08 ×263, Modern 10 ×148…</small></li>
+  <li class="done">Hybrid shrinkage toward era prior: explored, no robust win on either holdout
+    <small>per-wedding variance is irreducible from history alone → anchored mode or Engine B</small></li>
+  <li class="done">Culling model v1: logistic head on SigLIP embeddings
+    <small>wedding-grouped validation: AUC 0.963, accuracy 0.867; <code>cull.py folder/</code> → ranked keep-probability report; threshold = the menu-bar knob</small></li>
+  <li>Anchored mode: derive wedding-level offset from ~5 hand-edited anchors</li>
+</ul>
+
+<h2>Phase 3 — Daemon + menu-bar UI</h2>
+<ul>
+  <li class="done">Watch-folder daemon: <code>work/agent.py</code> (Python, 2s polling, wave detection)
+    <small>plan's Rust core deferred until Windows matters — daemon is the extraction seam</small></li>
+  <li>Rust: XMP writer + kNN port (or keep the Python sidecar process; benchmark first)</li>
+  <li class="done">SwiftUI MenuBarExtra (<code>menubar/</code>): status, progress, pause, look picker, cull toggle+threshold, log, spawns daemon
+    <small>everything in the one menu popup as required; talks to the daemon via config.json/state.json</small></li>
+  <li class="done">Dropbox-style panel: rail nav, activity feed, settings pane, start/stop, cull count, import/export paths</li>
+  <li>Completion notification (UserNotifications) + app bundle/login item packaging</li>
+  <li class="done">Look picker in the menu (backed by <code>--look</code> retrieval filtering)</li>
+</ul>
+
+<h2>Phase 4 — Trained model (Engine B)</h2>
+<ul>
+  <li>Download MIT-Adobe FiveK (~50 GB) + PPR10K
+    <small>PPR10K confirmed closest public wedding data: 11K raws incl. weddings, 3 experts, and group-level consistency as a design goal</small></li>
+  <li>Mine FiveK's Classic
+    <code>.lrcat</code> (needs the Lua-blob parser after all: the cloud catalog dodged it, FiveK won't)</li>
+  <li>Baseline: single-expert MLP head on frozen SigLIP2 (expert C)</li>
+  <li>Multi-expert style embedding + PPR10K; then personal fine-tune on the 2,644</li>
+  <li>The A/B/hybrid benchmark on the held-out wedding</li>
+</ul>
+
+<h2>Phase 5 — Quality passes</h2>
+<ul>
+  <li>Scene clustering per wedding (ceremony/reception/golden hour) for coherent blends</li>
+  <li>Confidence gating: far neighbors + model uncertainty → skip &amp; flag, don't guess</li>
+  <li>Camera-model as retrieval filter (D750 vs ARW bodies)</li>
+  <li>Re-mine after each delivered wedding (zero-effort improvement loop)</li>
+</ul>
+
+<h2>Debts / open questions</h2>
+<ul>
+  <li>1,610 JPEG-original edits sit in the dataset but are excluded from the index
+    (incremental WB scale). Decide: convert, separate index, or drop</li>
+  <li>Multi-mask <code>.acr</code> layout unverified (single-mask proven byte-identical)</li>
+  <li>Keeping the index fresh: bulk re-export vs Adobe Lightroom API (needs OAuth app)</li>
+  <li class="done">Catalog mining (cloud <code>.mcat</code>, MessagePack docs)</li>
+  <li class="done">XMP round-trip incl. masks (<code>.xmp</code> + synthesized <code>.acr</code>)</li>
+  <li class="done">Retrieval engine: proxies → SigLIP2/MPS → kNN → blend → sidecar</li>
+  <li class="done">Full-history ingestion via Export Original &amp; Settings (2,644 records)</li>
+</ul>
+</body>
+</html>

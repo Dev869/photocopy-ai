@@ -1,0 +1,92 @@
+proxies=2644 missing_original=0
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[transformers] Model config: bos_token_id must be `None` or an integer within the vocabulary (between 0 and 31999), got 49406. This may result in unexpected behavior.
+[transformers] Model config: eos_token_id must be `None` or an integer within the vocabulary (between 0 and 31999), got 49407. This may result in unexpected behavior.
+Loading weights:   0%|          | 0/408 [00:00<?, ?it/s]Loading weights: 100%|██████████| 408/408 [00:00<00:00, 10086.86it/s]
+  32/2644
+  64/2644
+  96/2644
+  128/2644
+  160/2644
+  192/2644
+  224/2644
+  256/2644
+  288/2644
+  320/2644
+  352/2644
+  384/2644
+  416/2644
+  448/2644
+  480/2644
+  512/2644
+  544/2644
+  576/2644
+  608/2644
+  640/2644
+  672/2644
+  704/2644
+  736/2644
+  768/2644
+  800/2644
+  832/2644
+  864/2644
+  896/2644
+  928/2644
+  960/2644
+  992/2644
+  1024/2644
+  1056/2644
+  1088/2644
+  1120/2644
+  1152/2644
+  1184/2644
+  1216/2644
+  1248/2644
+  1280/2644
+  1312/2644
+  1344/2644
+  1376/2644
+  1408/2644
+  1440/2644
+  1472/2644
+  1504/2644
+  1536/2644
+  1568/2644
+  1600/2644
+  1632/2644
+  1664/2644
+  1696/2644
+  1728/2644
+  1760/2644
+  1792/2644
+  1824/2644
+  1856/2644
+  1888/2644
+  1920/2644
+  1952/2644
+  1984/2644
+  2016/2644
+  2048/2644
+  2080/2644
+  2112/2644
+  2144/2644
+  2176/2644
+  2208/2644
+  2240/2644
+  2272/2644
+  2304/2644
+  2336/2644
+  2368/2644
+  2400/2644
+  2432/2644
+  2464/2644
+  2496/2644
+  2528/2644
+  2560/2644
+  2592/2644
+  2624/2644
+  2644/2644
+indexed 2644 images, dim=768, device=mps
+LOO MAE Exposure2012: 0.514  (n=1034)
+LOO MAE Temperature: 279.091  (n=921)
+LOO MAE Contrast2012: 9.551  (n=1034)

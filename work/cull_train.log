@@ -1,0 +1,107 @@
+=== rejects export stable at 3065 files, Sat Jul 11 13:33:15 PDT 2026 ===
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[transformers] Model config: bos_token_id must be `None` or an integer within the vocabulary (between 0 and 31999), got 49406. This may result in unexpected behavior.
+[transformers] Model config: eos_token_id must be `None` or an integer within the vocabulary (between 0 and 31999), got 49407. This may result in unexpected behavior.
+picks=2644 rejects=3065
+Loading weights:   0%|          | 0/408 [00:00<?, ?it/s]Loading weights: 100%|██████████| 408/408 [00:00<00:00, 10828.33it/s]
+  32/3065
+  64/3065
+  96/3065
+  128/3065
+  160/3065
+  192/3065
+  224/3065
+  256/3065
+  288/3065
+  320/3065
+  352/3065
+  384/3065
+  416/3065
+  448/3065
+  480/3065
+  512/3065
+  544/3065
+  576/3065
+  608/3065
+  640/3065
+  672/3065
+  704/3065
+  736/3065
+  768/3065
+  800/3065
+  832/3065
+  864/3065
+  896/3065
+  928/3065
+  960/3065
+  992/3065
+  1024/3065
+  1056/3065
+  1088/3065
+  1120/3065
+  1152/3065
+  1184/3065
+  1216/3065
+  1248/3065
+  1280/3065
+  1312/3065
+  1344/3065
+  1376/3065
+  1408/3065
+  1440/3065
+  1472/3065
+  1504/3065
+  1536/3065
+  1568/3065
+  1600/3065
+  1632/3065
+  1664/3065
+  1696/3065
+  1728/3065
+  1760/3065
+  1792/3065
+  1824/3065
+  1856/3065
+  1888/3065
+  1920/3065
+  1952/3065
+  1984/3065
+  2016/3065
+  2048/3065
+  2080/3065
+  2112/3065
+  2144/3065
+  2176/3065
+  2208/3065
+  2240/3065
+  2272/3065
+  2304/3065
+  2336/3065
+  2368/3065
+  2400/3065
+  2432/3065
+  2464/3065
+  2496/3065
+  2528/3065
+  2560/3065
+  2592/3065
+  2624/3065
+  2656/3065
+  2688/3065
+  2720/3065
+  2752/3065
+  2784/3065
+  2816/3065
+  2848/3065
+  2880/3065
+  2912/3065
+  2944/3065
+  2976/3065
+  3008/3065
+  3040/3065
+  3065/3065
+/Users/devinwilson/Documents/Projects/native-apps/photocopy-ai/work/cull_train.py:42: RuntimeWarning: invalid value encountered in scalar divide
+  return (ranks[pos].sum() - pos.sum() * (pos.sum() - 1) / 2) / (pos.sum() * (~pos).sum())
+val weddings=12 n=345  AUC=nan  acc=0.704  keep-rate@0=0.70 (true pick rate 1.00)
+saved index/cull.npz
+=== done Sat Jul 11 13:34:37 PDT 2026 ===
