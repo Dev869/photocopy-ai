@@ -182,3 +182,29 @@ irreducible without photometric learning (Engine B) or anchors.
 - 544 picks is thinner than the plan's "thousands"; `--all` (2,210) or
   rating-based filtering can widen the training set.
 - Catalog copy is a snapshot; re-run `mine.py` after each delivered wedding.
+
+## Engine B — trained head shipped (2026-07-11, branch worktree-engine-b-training)
+Built the plan's Engine B on Devin's own data — no public download needed yet.
+- `presets.py` — preset registry. Each crs:Look is a preset token (15 slots incl.
+  UNKNOWN). Adding a preset = another token; `register_external()` reserves slots
+  for FiveK/PPR10K experts so "more presets" scales past Devin's looks.
+- `train_head.py` — SigLIP2 emb(768) + photometric(lum p10/50/90 + EXIF EV) +
+  learned preset token -> MLP(384) -> 37 sliders (Basic + WB + 24 HSL). Huber on
+  z-scored targets, exposure/WB up-weighted. Photometry is the point: lets the head
+  learn exposure-from-image, which content-only kNN can't see.
+  - Fixed 100 epochs (swept: fewer underfit, more overfit exposure). torch seeded.
+  - Eval on held-out weddings; deployed checkpoint refits on ALL 1,034 raw picks.
+- Wired into `predict.py --engine b`: trained head supplies sliders, kNN neighbor's
+  XMP still gives structure (Look/curves/profile); model preds scene-smoothed.
+  `--look` conditions both retrieval and the preset token. Falls back to A if no
+  checkpoint. `agent.py` reads engine from config.json (menu-bar A/B toggle ready).
+- Honest 6-fold grouped (cross-wedding) MAE, B vs A(kNN) vs global-median baseline:
+    Exposure   0.67 ± 0.15  |  0.88  |  1.00   -> B wins (A used to LOSE to baseline)
+    Contrast   22.1 ± 2.4   |  29.2  |  27.0   -> B wins
+    Temperature 1044 ± 343  |  949   |  857    -> baseline wins (Temp/Tint stripped
+                 at inference unless WB=Custom, so this rarely bites end-to-end)
+- Engine B closes the cross-wedding exposure gap NOTES flagged as irreducible from
+  retrieval alone. Checkpoint (index/engineB.pt) is gitignored — regenerate with
+  `.venv/bin/python train_head.py`.
+- Not done (needs Devin): download FiveK (~50GB) + PPR10K to add the 5+3 expert
+  presets and the multi-style pretrain the plan describes.

@@ -1,7 +1,8 @@
 """Watch-folder daemon: new raws in -> XMP sidecars (+ cull report) out.
 
 IPC with the menu-bar shell is two JSON files in this directory:
-  config.json (shell writes): {"watch_dir", "look", "cull_threshold", "paused"}
+  config.json (shell writes): {"watch_dir", "look", "engine", "cull_threshold", "paused"}
+                              engine: "a" (retrieval) | "b" (trained head)
   state.json  (daemon writes): {"status", "done", "total", "last_file",
                                 "watch_dir", "looks", "updated"}
 Run: .venv/bin/python agent.py
@@ -167,7 +168,8 @@ def process_wave(paths, cfg, looks):
     phase("warming up…")
     do_edit = cfg.get("edit", True)
     if do_edit:
-        predict.main(paths, look=cfg.get("look"), progress=progress, on_written=written)
+        predict.main(paths, look=cfg.get("look"), engine=cfg.get("engine", "a"),
+                     progress=progress, on_written=written)
 
     thr, target = cfg.get("cull_threshold"), cfg.get("cull_target")
     if not cfg.get("cull", thr is not None or bool(target)):
