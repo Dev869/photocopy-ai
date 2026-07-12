@@ -240,3 +240,26 @@ tuned for Apple Silicon.
   REAL blob (validate vs a known image, per the mining playbook), map experts
   A–E to preset tokens via presets.register_external(), multi-expert train, then
   fine-tune back onto Devin's 1,034. Gated on the download completing.
+
+## FiveK fine-tune — investigated, measured, NOT shipped (2026-07-11)
+Downloaded FiveK (47 GB), extracted the catalog, built the ingest, and let the
+benchmark decide (per the plan). Verdict: FiveK does not help this engine.
+- Catalog is `fivek_dataset/raw_photos/fivek.lrcat` (1.7 GB SQLite, LR3 2011).
+  Develop settings are readable Lua-text blobs (`s = { Key = value, ... }`) — the
+  feared binary-blob parser was unnecessary; `fivek_ingest.parse_wb` handles it.
+- Process-version mismatch is fatal for slider regression: **0** of 96,458
+  develop rows use PV2012, **0** have HSL. All are PV<2012 (Brightness,
+  HighlightRecovery, old Exposure). Devin's engine predicts PV2012 (Exposure2012,
+  24 HSL, Clarity/Texture/Dehaze) — almost none of which exist in FiveK. Only
+  Temperature/Tint (absolute Kelvin) transfer cleanly.
+- Empirical test (700 imgs, 8,400 expert WB rows, WB-only external, masked loss,
+  3-fold): FiveK WB prior **hurts** Devin's held-out temperature 960 -> 1036 K
+  (+76), and drags exposure/contrast slightly too. FiveK is stock photography;
+  its WB decisions don't transfer to wedding lighting.
+- Conclusion: keep Engine B **Devin-only** (shipped checkpoint is clean, 15
+  presets). `work/fivek_ingest.py` kept as the validated parser + the template
+  for ingesting any *properly PV2012-aligned* expert data later. PPR10K already
+  ruled out (no slider labels). The multi-expert machinery stands ready; it just
+  needs data in the right parameter space, which neither public set provides.
+- `work/data/fivek/fivek_dataset.tar` (47 GB) can be deleted — re-downloadable;
+  only useful later for an image-to-image engine, a different design.
