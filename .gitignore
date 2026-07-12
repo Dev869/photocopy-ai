@@ -48,3 +48,6 @@ work/index
 work/dataset
 work/proxies
 work/settings_norm
+
+# Public datasets (huge, external)
+work/data/

@@ -74,11 +74,12 @@
     <small><code>predict.py --engine b</code>; preset token = one slot per crs:Look (15), expandable to public experts via <code>presets.register_external()</code></small></li>
   <li class="done">A vs B vs baseline benchmark, 6-fold grouped (cross-wedding)
     <small>exposure 0.67 vs 0.88 vs 1.00 → <b>B wins</b>; contrast 22 vs 29 vs 27 → <b>B wins</b>; temperature still to baseline (stripped at inference unless WB=Custom). Closes the cross-wedding exposure gap retrieval alone couldn't.</small></li>
-  <li class="human">Download MIT-Adobe FiveK (~50 GB) + PPR10K → 5+3 expert presets
-    <small>PPR10K confirmed closest public wedding data: 11K raws incl. weddings, 3 experts, group-level consistency</small></li>
-  <li>Mine FiveK's Classic
-    <code>.lrcat</code> (needs the Lua-blob parser after all: the cloud catalog dodged it, FiveK won't)</li>
-  <li>Multi-expert pretrain (each expert a preset token) → fine-tune the head on Devin's 1,034; re-run the A/B benchmark on a held-out wedding</li>
+  <li class="done">Multi-expert training path: <code>train_head.load_data(external=[...])</code>
+    <small>external experts train the head as style anchors, eval stays Devin-only; checkpoint stores the preset name→slot map. Ready for any PV2012-aligned expert data.</small></li>
+  <li class="done">FiveK (47 GB) downloaded, catalog parsed (<code>fivek_ingest.py</code>), tested — <b>does not transfer</b>
+    <small>FiveK is PV&lt;2012: 0/96,458 rows have Exposure2012 or HSL; only Temp/Tint map. Measured: FiveK WB prior <b>hurts</b> Devin's held-out temperature (960→1036 K). It's 2011 stock, not weddings. Kept Devin-only.</small></li>
+  <li class="done">PPR10K ruled out — labels are retouched images + 3D LUTs, no slider values (wrong output space for Engine B)</li>
+  <li>Open: a properly PV2012-aligned expert source (modern preset packs, or Devin editing more styles himself) to exercise the multi-expert path for real</li>
 </ul>
 
 <h2>Phase 5 — Quality passes</h2>

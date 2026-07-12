@@ -208,3 +208,58 @@ Built the plan's Engine B on Devin's own data — no public download needed yet.
   `.venv/bin/python train_head.py`.
 - Not done (needs Devin): download FiveK (~50GB) + PPR10K to add the 5+3 expert
   presets and the multi-style pretrain the plan describes.
+
+## Local VLM sanity pass + Phase 4 kickoff (2026-07-11, branch engine-b-phase4)
+Everything already runs local (SigLIP2 encoder + Engine A/B head on MPS, no
+cloud). Added the plan's optional VLM pass as a genuinely local open-weight model
+tuned for Apple Silicon.
+- `work/vlm.py` — Qwen3-VL-8B-Instruct-4bit via **mlx-vlm** (0.6.4). Proxy in ->
+  {exposure_ev, temp_shift, tint_shift, reason} JSON out. A cold-start / sanity
+  check to ride on top of Engine A/B (far neighbors, uncertain head).
+  - M5 Max 64 GB: 108 tok/s, 6.8 GB peak — trivial headroom. Model ~5.5 GB.
+  - Gotcha: greedy decoding (temp 0) collapses to "exexex…"; needs
+    repetition_penalty≈1.15 + temperature≈0.3, and a 3x retry for the rare
+    residual collapse. Image grounding verified (captions match the frame).
+  - Deps added to .venv: `mlx-vlm` (pulls mlx, mlx-lm); bumped transformers to
+    5.12.1 — SigLIP2 still loads clean (checked), embeddings unchanged.
+- Model choice: Qwen3-VL-8B-4bit over Qwen2.5-VL — newer, strong fine visual
+  judgment, 4-bit fits 64 GB with room. 2B/4B variants exist if speed matters.
+
+## FiveK / PPR10K reality (2026-07-11) — before downloading blindly
+- **Engine B predicts Lightroom slider values.** Public datasets don't natively
+  carry those:
+  - FiveK ships input DNGs + expert **rendered** TIFFs (A–E) publicly; the actual
+    per-expert slider values live only inside its bundled Lightroom **catalog**
+    (Adobe_imageDevelopSettings Lua blobs) → needs the deferred Lua parser +
+    downloading the 47 GB `fivek_dataset.tar` (the catalog isn't offered alone).
+  - PPR10K labels are retouched images + 3D LUTs — **no slider values at all**.
+    Wrong output space for Engine B; would suit a pixel/LUT model, a different
+    engine. Not downloading it.
+- Action: downloading FiveK (`work/data/fivek/`, gitignored, ~47 GB, resumable
+  `curl -C -`). Once down: extract the .lrcat, write the Lua parser against the
+  REAL blob (validate vs a known image, per the mining playbook), map experts
+  A–E to preset tokens via presets.register_external(), multi-expert train, then
+  fine-tune back onto Devin's 1,034. Gated on the download completing.
+
+## FiveK fine-tune — investigated, measured, NOT shipped (2026-07-11)
+Downloaded FiveK (47 GB), extracted the catalog, built the ingest, and let the
+benchmark decide (per the plan). Verdict: FiveK does not help this engine.
+- Catalog is `fivek_dataset/raw_photos/fivek.lrcat` (1.7 GB SQLite, LR3 2011).
+  Develop settings are readable Lua-text blobs (`s = { Key = value, ... }`) — the
+  feared binary-blob parser was unnecessary; `fivek_ingest.parse_wb` handles it.
+- Process-version mismatch is fatal for slider regression: **0** of 96,458
+  develop rows use PV2012, **0** have HSL. All are PV<2012 (Brightness,
+  HighlightRecovery, old Exposure). Devin's engine predicts PV2012 (Exposure2012,
+  24 HSL, Clarity/Texture/Dehaze) — almost none of which exist in FiveK. Only
+  Temperature/Tint (absolute Kelvin) transfer cleanly.
+- Empirical test (700 imgs, 8,400 expert WB rows, WB-only external, masked loss,
+  3-fold): FiveK WB prior **hurts** Devin's held-out temperature 960 -> 1036 K
+  (+76), and drags exposure/contrast slightly too. FiveK is stock photography;
+  its WB decisions don't transfer to wedding lighting.
+- Conclusion: keep Engine B **Devin-only** (shipped checkpoint is clean, 15
+  presets). `work/fivek_ingest.py` kept as the validated parser + the template
+  for ingesting any *properly PV2012-aligned* expert data later. PPR10K already
+  ruled out (no slider labels). The multi-expert machinery stands ready; it just
+  needs data in the right parameter space, which neither public set provides.
+- `work/data/fivek/fivek_dataset.tar` (47 GB) can be deleted — re-downloadable;
+  only useful later for an image-to-image engine, a different design.
