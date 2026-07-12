@@ -32,27 +32,58 @@ CKPT = "index/engineB.pt"
 EPOCHS = 100  # sweet spot: fewer underfits, more overfits exposure (swept 4-fold)
 
 
-def load_data():
-    embs = np.load("index/embeddings.npy")
-    ids = json.load(open("index/ids.json"))
-    recs = {r["asset_id"]: r for r in map(json.loads, open("dataset/index.jsonl"))
-            if r.get("is_raw", True)}
-    keep = [i for i, x in enumerate(ids) if x in recs]
-    ids = [ids[i] for i in keep]
-    embs = embs[keep]
-    lums, evs, _days = build_index_features(ids, recs)
-    phot = np.concatenate([lums, evs[:, None]], axis=1).astype(np.float32)  # (n,4)
-    idx, names = look2idx()
-    looks = np.array([encode(recs[x].get("look"), idx) for x in ids], dtype=np.int64)
-    weddings = np.array([(recs[x].get("capture_date") or "")[:10] for x in ids])
+def _rows_to_Y(ids, recs):
     Y = np.full((len(ids), len(KEYS)), np.nan, np.float32)
     for r, x in enumerate(ids):
         s = recs[x]["settings"]
         for c, k in enumerate(KEYS):
             if k in s:
                 Y[r, c] = float(s[k])
-    return dict(ids=ids, embs=embs.astype(np.float32), phot=phot, looks=looks,
-                weddings=weddings, Y=Y, recs=recs, n_presets=len(names))
+    return Y
+
+
+def load_data(external=()):
+    """Devin's index + optional external expert sources (FiveK, PPR10K, ...).
+
+    Each external source is a dir with: embeddings.npy, ids.json, phot.npy (n,4)
+    lums+EV, index.jsonl (Devin-schema records with settings + look). Its rows are
+    style anchors — always trained on, never in the held-out eval. Register the
+    external looks (presets.register_external) BEFORE calling so they get slots.
+    """
+    idx, names = look2idx()
+    # Devin's own data (photometrics built from proxies + EXPORT xmps)
+    embs = np.load("index/embeddings.npy")
+    ids = json.load(open("index/ids.json"))
+    recs = {r["asset_id"]: r for r in map(json.loads, open("dataset/index.jsonl"))
+            if r.get("is_raw", True)}
+    keep = [i for i, x in enumerate(ids) if x in recs]
+    ids = [ids[i] for i in keep]
+    embs = embs[keep].astype(np.float32)
+    lums, evs, _ = build_index_features(ids, recs)
+    phot = np.concatenate([lums, evs[:, None]], axis=1).astype(np.float32)
+    looks = np.array([encode(recs[x].get("look"), idx) for x in ids], np.int64)
+    weddings = np.array([(recs[x].get("capture_date") or "")[:10] for x in ids])
+    Y = _rows_to_Y(ids, recs)
+    external_mask = np.zeros(len(ids), bool)
+
+    for d in external:  # each external dir carries precomputed embs + phot
+        e_embs = np.load(f"{d}/embeddings.npy").astype(np.float32)
+        e_ids = json.load(open(f"{d}/ids.json"))
+        e_phot = np.load(f"{d}/phot.npy").astype(np.float32)
+        e_recs = {r["asset_id"]: r for r in map(json.loads, open(f"{d}/index.jsonl"))}
+        e_ids = [x for x in e_ids if x in e_recs]  # keep order, drop missing
+        sel = [i for i, x in enumerate(json.load(open(f"{d}/ids.json"))) if x in e_recs]
+        embs = np.concatenate([embs, e_embs[sel]])
+        phot = np.concatenate([phot, e_phot[sel]])
+        looks = np.concatenate([looks, [encode(e_recs[x].get("look"), idx) for x in e_ids]])
+        weddings = np.concatenate([weddings, [f"ext:{e_recs[x].get('look')}" for x in e_ids]])
+        Y = np.concatenate([Y, _rows_to_Y(e_ids, e_recs)])
+        external_mask = np.concatenate([external_mask, np.ones(len(e_ids), bool)])
+        recs.update(e_recs); ids = ids + e_ids
+
+    return dict(ids=ids, embs=embs, phot=phot, looks=looks, weddings=weddings,
+                Y=Y, recs=recs, n_presets=len(names), names=names,
+                external=external_mask)
 
 
 def grouped_split(weddings, val_frac=0.18, seed=0):
@@ -89,11 +120,14 @@ def standardize(a, mean, std):
     return (a - mean) / std
 
 
-def train(compare=False, seed=0):
+def train(compare=False, seed=0, external=()):
     torch.manual_seed(seed); np.random.seed(seed)  # reproducible weights + split
-    d = load_data()
+    d = load_data(external=external)
     tr, va, val_w = grouped_split(d["weddings"], seed=seed)
-    print(f"train {tr.sum()} imgs / val {va.sum()} imgs over {len(val_w)} held-out weddings")
+    tr = tr | d["external"]; va = va & ~d["external"]  # experts train-only; eval on Devin
+    n_ext = int(d["external"].sum())
+    print(f"train {tr.sum()} imgs ({n_ext} external) / val {va.sum()} imgs "
+          f"over {len(val_w)} held-out weddings")
 
     # normalization from TRAIN only
     ym = np.nanmean(d["Y"][tr], 0); ys = np.nanstd(d["Y"][tr], 0) + 1e-6
@@ -141,7 +175,7 @@ def train(compare=False, seed=0):
     iall = T(np.arange(len(d["ids"]), dtype=np.int64))
     dep = fit(iall, Pall, Yzall)
     torch.save(dict(state=dep.state_dict(), n_presets=d["n_presets"], keys=KEYS,
-                    ym=dym, ys=dys, pm=dpm, ps=dps), CKPT)
+                    names=d["names"], ym=dym, ys=dys, pm=dpm, ps=dps), CKPT)
     print(f"saved {CKPT} (all-data refit, {EPOCHS} epochs)")
 
     if compare:

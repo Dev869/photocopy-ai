@@ -137,7 +137,10 @@ def main(paths, look=None, engine="a", progress=None, on_written=None):
         from train_head import load_head, infer
         from presets import look2idx, encode
         head, meta = load_head()
-        li = encode(look, look2idx()[0])
+        # slot map from the checkpoint's own names, so it can't drift if the
+        # dataset (and thus a fresh look2idx) changes after training
+        li = ({n: i for i, n in enumerate(meta["names"])}.get(look or "Unknown", 0)
+              if meta.get("names") else encode(look, look2idx()[0]))
         preds = infer(head, meta, np.stack([r[2] for r in per]),
                       np.stack([r[4] for r in per]), [li] * len(per))
         overrides = {n: dict(d) for n, d in enumerate(preds)}
