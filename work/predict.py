@@ -100,7 +100,7 @@ SMOOTH_KEYS = ("Exposure2012 Temperature Tint Contrast2012 Highlights2012 Shadow
                "Whites2012 Blacks2012 Vibrance Saturation").split()
 
 
-def main(paths, look=None, progress=None, on_written=None):
+def main(paths, look=None, engine="a", progress=None, on_written=None):
     import datetime, statistics as st
     from embed import load_model, embed_paths
     from features import EPOCH, ev_from_raw, lum
@@ -112,7 +112,7 @@ def main(paths, look=None, progress=None, on_written=None):
     model, processor, device = load_model()
     os.makedirs("tmp_proxies", exist_ok=True)
     today = float(datetime.date.today().toordinal() - EPOCH)
-    per = []  # (path, ts, emb, nbrs)
+    per = []  # (path, ts, emb, nbrs, phot)
     for p in paths:
         if p.lower().endswith((".jpg", ".jpeg", ".png")):
             proxy, ev = p, None
@@ -121,24 +121,46 @@ def main(paths, look=None, progress=None, on_written=None):
             make_proxy(p, proxy)
             ev = ev_from_raw(p)
         q = embed_paths([proxy], model, processor, device)[0]
-        nbrs = knn(idx, q, lum(proxy), ev, today)
-        per.append((p, os.path.getmtime(p), q, nbrs))
+        lp = lum(proxy)
+        nbrs = knn(idx, q, lp, ev, today)
+        per.append((p, os.path.getmtime(p), q, nbrs,
+                    np.concatenate([lp, [ev if ev is not None else 10.0]]).astype(np.float32)))
         if progress:
             progress(len(per), len(paths))
-    # scene smoothing: one value per scene for exposure/WB/tone keys
-    scenes = cluster_scenes(sorted(((ts, q, n) for n, (_p, ts, q, _nb) in enumerate(per)),
+    scenes = cluster_scenes(sorted(((ts, q, n) for n, (_p, ts, q, _nb, _f) in enumerate(per)),
                                    key=lambda t: t[0]))
-    overrides = {}
-    for scene in scenes:
-        med = {}
-        for k in SMOOTH_KEYS:
-            vals = [float(r["settings"][k]) for m in scene
-                    for r, _ in per[m][3] if k in r["settings"]]
-            if vals:
-                med[k] = st.median(vals)
-        for m in scene:
-            overrides[m] = med
-    for n, (p, _ts, _q, nbrs) in enumerate(per):
+    if engine == "b" and not os.path.exists("index/engineB.pt"):
+        print("engine B requested but index/engineB.pt missing — run train_head.py; using A")
+        engine = "a"
+    if engine == "b":
+        # Engine B: trained head supplies all sliders; kNN XMP still gives structure.
+        from train_head import load_head, infer
+        from presets import look2idx, encode
+        head, meta = load_head()
+        li = encode(look, look2idx()[0])
+        preds = infer(head, meta, np.stack([r[2] for r in per]),
+                      np.stack([r[4] for r in per]), [li] * len(per))
+        overrides = {n: dict(d) for n, d in enumerate(preds)}
+        for scene in scenes:  # smooth the model's own predictions within a scene
+            for k in SMOOTH_KEYS:
+                vals = [preds[m][k] for m in scene if k in preds[m]]
+                if vals:
+                    med = st.median(vals)
+                    for m in scene:
+                        overrides[m][k] = med
+    else:
+        # Engine A: scene-median of neighbor settings for exposure/WB/tone keys
+        overrides = {}
+        for scene in scenes:
+            med = {}
+            for k in SMOOTH_KEYS:
+                vals = [float(r["settings"][k]) for m in scene
+                        for r, _ in per[m][3] if k in r["settings"]]
+                if vals:
+                    med[k] = st.median(vals)
+            for m in scene:
+                overrides[m] = med
+    for n, (p, _ts, _q, nbrs, _f) in enumerate(per):
         sidecar = os.path.splitext(p)[0] + ".xmp"
         is_jpg = p.lower().endswith((".jpg", ".jpeg"))
         open(sidecar, "w").write(
@@ -170,9 +192,13 @@ if __name__ == "__main__":
         loo_eval()
     else:
         args = sys.argv[1:]
-        look = None
+        look = engine = None
         if "--look" in args:
             j = args.index("--look")
             look = args[j + 1]
             args = args[:j] + args[j + 2:]
-        main(args, look)
+        if "--engine" in args:
+            j = args.index("--engine")
+            engine = args[j + 1]
+            args = args[:j] + args[j + 2:]
+        main(args, look, engine=engine or "a")

@@ -69,13 +69,16 @@
 
 <h2>Phase 4 — Trained model (Engine B)</h2>
 <ul>
-  <li>Download MIT-Adobe FiveK (~50 GB) + PPR10K
-    <small>PPR10K confirmed closest public wedding data: 11K raws incl. weddings, 3 experts, and group-level consistency as a design goal</small></li>
+  <li class="done">Engine B on Devin's own data: <code>train_head.py</code> — SigLIP2 emb +
+    photometric (luminance + EXIF EV) + learned preset token → MLP → 37 sliders
+    <small><code>predict.py --engine b</code>; preset token = one slot per crs:Look (15), expandable to public experts via <code>presets.register_external()</code></small></li>
+  <li class="done">A vs B vs baseline benchmark, 6-fold grouped (cross-wedding)
+    <small>exposure 0.67 vs 0.88 vs 1.00 → <b>B wins</b>; contrast 22 vs 29 vs 27 → <b>B wins</b>; temperature still to baseline (stripped at inference unless WB=Custom). Closes the cross-wedding exposure gap retrieval alone couldn't.</small></li>
+  <li class="human">Download MIT-Adobe FiveK (~50 GB) + PPR10K → 5+3 expert presets
+    <small>PPR10K confirmed closest public wedding data: 11K raws incl. weddings, 3 experts, group-level consistency</small></li>
   <li>Mine FiveK's Classic
     <code>.lrcat</code> (needs the Lua-blob parser after all: the cloud catalog dodged it, FiveK won't)</li>
-  <li>Baseline: single-expert MLP head on frozen SigLIP2 (expert C)</li>
-  <li>Multi-expert style embedding + PPR10K; then personal fine-tune on the 2,644</li>
-  <li>The A/B/hybrid benchmark on the held-out wedding</li>
+  <li>Multi-expert pretrain (each expert a preset token) → fine-tune the head on Devin's 1,034; re-run the A/B benchmark on a held-out wedding</li>
 </ul>
 
 <h2>Phase 5 — Quality passes</h2>
