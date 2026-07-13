@@ -84,7 +84,10 @@ def available_looks():
     from collections import Counter
     c = Counter(r.get("look") for r in map(json.loads, open(os.path.join(HERE, "dataset/index.jsonl")))
                 if r.get("is_raw", True) and r.get("look"))
-    return [name for name, n in c.most_common() if n >= 25]
+    looks = [name for name, n in c.most_common() if n >= 25]
+    if os.path.exists(os.path.join(HERE, "data/ppr10k/eng/index.jsonl")):
+        looks.append("PPR10K")  # external expert style: Engine B token, no retrieval history
+    return looks
 
 
 def pending_raws(watch_dir, exclude=None):

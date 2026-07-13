@@ -108,7 +108,11 @@ def main(paths, look=None, engine="a", progress=None, on_written=None):
     from scenes import cluster_scenes
     idx = load_index()
     if look:
-        idx = subset_by_look(idx, look)
+        try:
+            idx = subset_by_look(idx, look)
+        except AssertionError:
+            print(f"look {look!r} has no retrieval history — using Engine B style token")
+            engine = "b"
     model, processor, device = load_model()
     os.makedirs("tmp_proxies", exist_ok=True)
     today = float(datetime.date.today().toordinal() - EPOCH)
