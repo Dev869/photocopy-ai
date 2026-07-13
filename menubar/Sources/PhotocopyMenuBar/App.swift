@@ -214,6 +214,44 @@ final class Agent {
         state.updated = 0
     }
 
+    // Mirrors agent.py's SCAN_EXTS + "has sidecar" rule.
+    static let scanExts: Set<String> = ["nef", "nrw", "cr2", "cr3", "arw", "raf", "rw2",
+                                        "orf", "dng", "pef", "srw", "3fr", "fff", "iiq",
+                                        "jpg", "jpeg"]
+
+    /// Quick app-side scan of the watch folder: photos awaiting edits vs already edited.
+    func scanWatchDir() -> (pending: Int, edited: Int) {
+        guard let dir = config.watchDir else { return (0, 0) }
+        var pending = 0, edited = 0
+        let fm = FileManager.default
+        if let walk = fm.enumerator(at: URL(fileURLWithPath: dir),
+                                    includingPropertiesForKeys: nil,
+                                    options: [.skipsHiddenFiles]) {
+            for case let f as URL in walk where Self.scanExts.contains(f.pathExtension.lowercased()) {
+                let xmp = f.deletingPathExtension().appendingPathExtension("xmp")
+                if fm.fileExists(atPath: xmp.path) { edited += 1 } else { pending += 1 }
+            }
+        }
+        return (pending, edited)
+    }
+
+    /// Re-edit everything: drop our .xmp/.acr sidecars so the daemon treats the
+    /// whole folder as new, then start. Exported copies are hardlinks — unaffected.
+    func reEditAll() {
+        guard let dir = config.watchDir else { return }
+        let fm = FileManager.default
+        if let walk = fm.enumerator(at: URL(fileURLWithPath: dir),
+                                    includingPropertiesForKeys: nil,
+                                    options: [.skipsHiddenFiles]) {
+            for case let f as URL in walk where Self.scanExts.contains(f.pathExtension.lowercased()) {
+                let stem = f.deletingPathExtension()
+                try? fm.removeItem(at: stem.appendingPathExtension("xmp"))
+                try? fm.removeItem(at: stem.appendingPathExtension("acr"))
+            }
+        }
+        startDaemon()
+    }
+
     func killDaemonProcess() {
         // pkill catches every daemon — app-spawned AND detached strays the app
         // has no Process handle for (a terminate()-only path missed those).
@@ -466,7 +504,7 @@ struct PanelView: View {
         case "watching": agent.state.total > 0
             ? "Found \(agent.state.total) photos — starting…"
             : (agent.state.edited ?? 0) > 0
-                ? "All \(agent.state.edited ?? 0) photos already edited — drop in new ones"
+                ? "All \(agent.state.edited ?? 0) photos already edited — press Start to re-edit"
                 : "Up to date"
         case "paused": "Paused"
         case "no-folder": "Choose a folder of photos"
@@ -480,8 +518,30 @@ struct HomePane: View {
     @Bindable var agent: Agent
     @Binding var expandedThumb: URL?
     @State private var dropTargeted = false
+    @State private var showRedo = false
+    @State private var redoEdited = 0
 
     private let columns = [GridItem(.adaptive(minimum: 78), spacing: 8)]
+
+    /// Start — but if the folder is fully edited already, say so and offer a re-edit.
+    private func startOrPromptRedo() {
+        let scan = agent.scanWatchDir()
+        if scan.pending == 0, scan.edited > 0 {
+            redoEdited = scan.edited
+            showRedo = true
+        } else {
+            agent.startDaemon()
+        }
+    }
+
+    /// After picking/dropping a folder: if it's fully edited, surface the popup immediately.
+    private func promptRedoIfEdited() {
+        let scan = agent.scanWatchDir()
+        if scan.pending == 0, scan.edited > 0 {
+            redoEdited = scan.edited
+            showRedo = true
+        }
+    }
 
     var body: some View {
         ScrollView {
@@ -504,6 +564,14 @@ struct HomePane: View {
                 }
             }
             .padding(16)
+        }
+        .alert("Already edited", isPresented: $showRedo) {
+            Button("Re-edit \(redoEdited) photos", role: .destructive) { agent.reEditAll() }
+            Button("Watch for new photos only") { agent.startDaemon() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("All \(redoEdited) photos in this folder already have edits. "
+                 + "Re-editing replaces those edits with fresh ones.")
         }
     }
 
@@ -558,7 +626,7 @@ struct HomePane: View {
 
     private var startStop: some View {
         Button {
-            agent.isRunning ? agent.stopDaemon() : agent.startDaemon()
+            agent.isRunning ? agent.stopDaemon() : startOrPromptRedo()
         } label: {
             Label(agent.isRunning ? "Stop" : "Start editing",
                   systemImage: agent.isRunning ? "stop.fill" : "play.fill")
@@ -603,6 +671,7 @@ struct HomePane: View {
                     Task { @MainActor in
                         agent.config.watchDir = url.path
                         agent.saveConfig()
+                        promptRedoIfEdited()
                     }
                 }
             }
@@ -668,6 +737,7 @@ struct HomePane: View {
         if panel.runModal() == .OK, let url = panel.url {
             agent.config.watchDir = url.path
             agent.saveConfig()
+            promptRedoIfEdited()
         }
     }
 }

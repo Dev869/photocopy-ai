@@ -334,3 +334,12 @@ paused:false + spawn. UI "running" = daemonAlive && !paused (config is local,
 no flicker). App quit kills all daemons (terminate + pkill, catching strays).
 Verified: paused daemon idles with pending photos; unpause processes; quit
 leaves nothing running. Deployed stopped-by-default per the user's intent.
+
+## Re-edit an already-edited batch (2026-07-12)
+Start (or picking/dropping a folder) now scans the folder app-side; if every
+photo already has a sidecar, an alert says "All N photos already edited" with
+Re-edit N photos / Watch for new photos only / Cancel. Re-edit deletes our
+.xmp/.acr sidecars (exported copies are hardlinks — untouched) and starts the
+daemon, whose normal pending logic re-processes the batch. Verified with the
+real daemon: fresh sidecar written (hash changed) after the delete+unpause
+sequence the button performs. Idle strip now says "press Start to re-edit".
