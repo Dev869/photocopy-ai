@@ -308,3 +308,13 @@ Two separate causes behind "bar still missing, activity not updating":
 Verified live: wave on a fresh NEF held status=processing through warm-up (bar
 visible), events feed appended start/photo/done, cory-test idle state reads
 edited: 40. To re-edit an already-edited folder, delete its .xmp sidecars.
+
+## Menu-bar overflow escape hatch (2026-07-12)
+macOS silently hides status items when the menu bar is full (notch MacBooks
+especially) — and a hidden icon made this menu-bar-only app unreachable.
+Can't force the icon visible (OS behavior). Fix: re-opening Photocopy.app
+(Spotlight/Finder/Dock) now shows the panel as a regular 460x520 window —
+AppDelegate.applicationShouldHandleReopen -> NSHostingController(PanelView).
+Agent became a shared singleton so the window and the menu panel drive the SAME
+agent (two instances would each supervise/spawn daemons). Verified: first launch
+0 windows, reopen 1 window, still exactly 1 daemon.

@@ -107,6 +107,8 @@ struct FeedEvent: Identifiable, Decodable {
 
 @MainActor @Observable
 final class Agent {
+    static let shared = Agent()
+
     var state = DaemonState()
     var config = DaemonConfig()
     var events: [FeedEvent] = []
@@ -210,16 +212,44 @@ final class Agent {
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var panelWindow: NSWindow?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+    }
+
+    // Escape hatch for a crowded menu bar: macOS silently hides status items
+    // when the bar is full (notch), leaving a menu-bar-only app unreachable.
+    // Re-opening the app (Spotlight / Finder / Dock) lands here — show the
+    // panel as a regular window instead.
+    func applicationShouldHandleReopen(_ sender: NSApplication,
+                                       hasVisibleWindows: Bool) -> Bool {
+        showPanelWindow()
+        return true
+    }
+
+    private func showPanelWindow() {
+        if panelWindow == nil {
+            let host = NSHostingController(rootView: PanelView(agent: Agent.shared))
+            let w = NSWindow(contentViewController: host)
+            w.title = "Photocopy"
+            w.styleMask = [.titled, .closable]
+            w.isReleasedWhenClosed = false
+            w.setContentSize(NSSize(width: 460, height: 520))
+            panelWindow = w
+        }
+        panelWindow?.center()
+        panelWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 
 @main
 struct PhotocopyApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var agent = Agent()
+    @State private var agent = Agent.shared
 
     var body: some Scene {
         MenuBarExtra {
