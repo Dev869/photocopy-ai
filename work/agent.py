@@ -88,8 +88,11 @@ def available_looks():
 
 
 def pending_raws(watch_dir, exclude=None):
-    """Recursive: card dumps and wedding folders nest. Skips hidden dirs and the export tree."""
-    out = []
+    """Recursive: card dumps and wedding folders nest. Skips hidden dirs and the
+    export tree. Returns (pending, n_edited): raws lacking a sidecar, and the
+    count that already have one — so the shell can say "already edited" instead
+    of looking dead when there's nothing to do."""
+    out, edited = [], 0
     ex = os.path.realpath(os.path.expanduser(exclude)) if exclude else None
     for root, dirs, files in os.walk(watch_dir):
         dirs[:] = [d for d in dirs if not d.startswith(".")]
@@ -98,9 +101,12 @@ def pending_raws(watch_dir, exclude=None):
             continue
         for f in sorted(files):
             p = os.path.join(root, f)
-            if f.lower().endswith(SCAN_EXTS) and not os.path.exists(os.path.splitext(p)[0] + ".xmp"):
-                out.append(p)
-    return sorted(out)
+            if f.lower().endswith(SCAN_EXTS):
+                if os.path.exists(os.path.splitext(p)[0] + ".xmp"):
+                    edited += 1
+                else:
+                    out.append(p)
+    return sorted(out), edited
 
 
 def place(src, dst_dir):
@@ -268,7 +274,7 @@ def run():
             prev_pending = []
             time.sleep(2)
             continue
-        pending = pending_raws(wd, exclude=cfg.get("export_dir") or default_export_dir(wd))
+        pending, edited = pending_raws(wd, exclude=cfg.get("export_dir") or default_export_dir(wd))
         if pending and pending == prev_pending:  # stable across one poll = copy finished
             log(f"wave: {len(pending)} raws in {wd}")
             try:
@@ -281,7 +287,7 @@ def run():
                 time.sleep(10)
             prev_pending = []
         else:
-            write_state(status="watching", done=0, total=len(pending),
+            write_state(status="watching", done=0, total=len(pending), edited=edited,
                         last_file="", watch_dir=wd, looks=looks)
             prev_pending = pending
         time.sleep(2)

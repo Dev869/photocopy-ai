@@ -33,13 +33,14 @@ struct DaemonState: Codable {
     var status = "starting"
     var done = 0
     var total = 0
+    var edited: Int?          // raws in the watch dir that already have sidecars
     var lastFile = ""
     var watchDir = ""
     var looks: [String] = []
     var updated = 0.0
 
     enum CodingKeys: String, CodingKey {
-        case status, done, total, looks, updated
+        case status, done, total, edited, looks, updated
         case lastFile = "last_file"
         case watchDir = "watch_dir"
     }
@@ -413,7 +414,9 @@ struct PanelView: View {
         case "processing": "Editing \(agent.state.done)/\(agent.state.total) — \(agent.state.lastFile)"
         case "watching": agent.state.total > 0
             ? "Found \(agent.state.total) photos — starting…"
-            : "Up to date"
+            : (agent.state.edited ?? 0) > 0
+                ? "All \(agent.state.edited ?? 0) photos already edited — drop in new ones"
+                : "Up to date"
         case "paused": "Paused"
         case "no-folder": "Choose a folder of photos"
         case "error": "Error — see Activity"

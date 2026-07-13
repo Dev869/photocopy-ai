@@ -292,3 +292,19 @@ Daemon-only change — no app rebuild (shell reads agent.py from disk).
 - Honest scope: proof JPEG is an APPROXIMATE render (exposure/WB/tone/color only;
   no Look/curves/HSL/profile/masks). TODO (user asked, deferred): Lightroom-faithful
   JPEG export by driving LR's own export/auto-import — matches delivery quality.
+
+## Fix: blank Activity + "nothing happens" on already-edited folders (2026-07-12)
+Two separate causes behind "bar still missing, activity not updating":
+1. Activity was blank because work/events.jsonl got DELETED from disk: PR #4
+   untracked it with `git rm --cached`, and pulling that commit into main applied
+   the recorded deletion to the working tree. Restored (history lost, seeded with
+   a note); it's gitignored now so git can never touch it again.
+2. No bar because there was genuinely nothing to process: every NEF in the watch
+   folder already had a sidecar, and the daemon skips edited raws by design. The
+   UI just never said so — "watching, 0 pending" looked identical to broken.
+   Fix: pending_raws now also returns the already-edited count, daemon reports it
+   in state (edited), and the status strip says "All N photos already edited —
+   drop in new ones". DaemonState.edited is optional so old state.json decodes.
+Verified live: wave on a fresh NEF held status=processing through warm-up (bar
+visible), events feed appended start/photo/done, cory-test idle state reads
+edited: 40. To re-edit an already-edited folder, delete its .xmp sidecars.
