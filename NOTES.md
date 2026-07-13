@@ -371,3 +371,13 @@ the lift. Style absent by design (Looks are LR LUTs; proofs can't apply them).
 - Also possible cause of "wrong style": config had no Look set -> retrieval
   blends across all 12 historical looks and the nearest neighbor's Look wins.
   Set the Profile in the app per shoot.
+
+## Fix: "Re-edit" click closed the panel and did nothing (2026-07-12)
+Evidence: app process alive, sidecars untouched, still paused — the click never
+executed. Cause: SwiftUI .alert inside a window-style MenuBarExtra steals key
+status; the panel auto-dismisses on losing focus and the alert's presentation
+context dies with it, so buttons never fire. Fix: app-modal NSAlert (AppKit)
+for the re-edit confirmation — modal survives the panel closing; first button
+marked destructive. Removed the .alert modifier + its @State. Lesson recorded:
+no SwiftUI presentation modifiers (.alert/.sheet/.confirmationDialog) inside
+the MenuBarExtra panel — use NSAlert/NSOpenPanel (chooseFolder already does).

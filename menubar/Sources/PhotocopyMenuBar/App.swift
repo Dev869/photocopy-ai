@@ -520,8 +520,6 @@ struct HomePane: View {
     @Bindable var agent: Agent
     @Binding var expandedThumb: URL?
     @State private var dropTargeted = false
-    @State private var showRedo = false
-    @State private var redoEdited = 0
 
     private let columns = [GridItem(.adaptive(minimum: 78), spacing: 8)]
 
@@ -529,8 +527,7 @@ struct HomePane: View {
     private func startOrPromptRedo() {
         let scan = agent.scanWatchDir()
         if scan.pending == 0, scan.edited > 0 {
-            redoEdited = scan.edited
-            showRedo = true
+            confirmRedo(edited: scan.edited)
         } else {
             agent.startDaemon()
         }
@@ -540,8 +537,27 @@ struct HomePane: View {
     private func promptRedoIfEdited() {
         let scan = agent.scanWatchDir()
         if scan.pending == 0, scan.edited > 0 {
-            redoEdited = scan.edited
-            showRedo = true
+            confirmRedo(edited: scan.edited)
+        }
+    }
+
+    /// AppKit alert, NOT SwiftUI .alert: presenting a SwiftUI alert from a
+    /// window-style MenuBarExtra steals key status, the panel auto-dismisses,
+    /// and the alert's presentation context dies — buttons never fire. An
+    /// app-modal NSAlert survives the panel closing.
+    private func confirmRedo(edited: Int) {
+        let a = NSAlert()
+        a.messageText = "Already edited"
+        a.informativeText = "All \(edited) photos in this folder already have edits. "
+            + "Re-editing replaces those edits with fresh ones."
+        a.addButton(withTitle: "Re-edit \(edited) Photos").hasDestructiveAction = true
+        a.addButton(withTitle: "Watch for New Only")
+        a.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        switch a.runModal() {
+        case .alertFirstButtonReturn: agent.reEditAll()
+        case .alertSecondButtonReturn: agent.startDaemon()
+        default: break
         }
     }
 
@@ -569,14 +585,6 @@ struct HomePane: View {
                 }
             }
             .padding(16)
-        }
-        .alert("Already edited", isPresented: $showRedo) {
-            Button("Re-edit \(redoEdited) photos", role: .destructive) { agent.reEditAll() }
-            Button("Watch for new photos only") { agent.startDaemon() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("All \(redoEdited) photos in this folder already have edits. "
-                 + "Re-editing replaces those edits with fresh ones.")
         }
     }
 
