@@ -318,3 +318,19 @@ AppDelegate.applicationShouldHandleReopen -> NSHostingController(PanelView).
 Agent became a shared singleton so the window and the menu panel drive the SAME
 agent (two instances would each supervise/spawn daemons). Verified: first launch
 0 windows, reopen 1 window, still exactly 1 daemon.
+
+## Fix: "keeps starting even though I tell it not to" (2026-07-12)
+Stop never persisted intent — it only killed the process. Three compounding bugs:
+(1) config.paused was never written by the app, so nothing on disk recorded the
+user's "no"; any revived daemon resumed editing. (2) After Stop, poll() re-read
+state.json whose timestamp the dead daemon had just refreshed (heartbeat), so
+the UI flipped back to "running" for up to 8s — Stop looked ignored. (3) The
+Start/Stop button toggled on that flickering liveness bit, so a click during the
+flicker could land as Start and spawn a real daemon (observed: app-spawned
+daemon at 19:47:45). Some phantom starts were also detached test daemons the
+app had no Process handle for.
+Fix: config.paused is the source of truth. Stop = paused:true + kill; Start =
+paused:false + spawn. UI "running" = daemonAlive && !paused (config is local,
+no flicker). App quit kills all daemons (terminate + pkill, catching strays).
+Verified: paused daemon idles with pending photos; unpause processes; quit
+leaves nothing running. Deployed stopped-by-default per the user's intent.

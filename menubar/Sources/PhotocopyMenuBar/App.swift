@@ -190,8 +190,16 @@ final class Agent {
         }
     }
 
+    // "Running" for the UI: the on-disk paused flag is the source of truth the
+    // user controls; liveness alone flickers (a just-killed daemon's state.json
+    // stays fresh for up to 8s), which made Stop look ignored and let a click
+    // land as Start.
+    var isRunning: Bool { daemonAlive && !config.paused }
+
     func startDaemon() {
         shouldRun = true
+        config.paused = false     // persist intent: the daemon honors this flag
+        saveConfig()
         if daemon?.isRunning != true, !daemonAlive {
             spawn()
         }
@@ -199,16 +207,23 @@ final class Agent {
 
     func stopDaemon() {
         shouldRun = false
-        if let daemon, daemon.isRunning {
-            daemon.terminate()
-        } else {
-            let kill = Process()
-            kill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
-            kill.arguments = ["-f", "agent.py"]
-            try? kill.run()
-        }
+        config.paused = true      // persist intent: even a revived daemon idles
+        saveConfig()
+        killDaemonProcess()
         daemon = nil
         state.updated = 0
+    }
+
+    func killDaemonProcess() {
+        // pkill catches every daemon — app-spawned AND detached strays the app
+        // has no Process handle for (a terminate()-only path missed those).
+        if let daemon, daemon.isRunning {
+            daemon.terminate()
+        }
+        let kill = Process()
+        kill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        kill.arguments = ["-f", "agent.py"]
+        try? kill.run()
     }
 }
 
@@ -218,6 +233,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+    }
+
+    // Quit means quit: take the daemon down too — including strays the app
+    // didn't spawn (detached test runs), which Stop's pkill also covers.
+    func applicationWillTerminate(_ notification: Notification) {
+        Agent.shared.killDaemonProcess()
     }
 
     // Escape hatch for a crowded menu bar: macOS silently hides status items
@@ -417,7 +438,7 @@ struct PanelView: View {
     }
 
     private var stripIcon: String {
-        if !agent.daemonAlive { return "stop.circle" }
+        if !agent.isRunning { return "stop.circle" }
         return switch agent.state.status {
         case "processing": "arrow.triangle.2.circlepath"
         case "watching": "checkmark.circle"
@@ -428,7 +449,7 @@ struct PanelView: View {
     }
 
     private var stripColor: Color {
-        if !agent.daemonAlive { return .inkSecondary }
+        if !agent.isRunning { return .inkSecondary }
         return switch agent.state.status {
         case "processing": .dbBlue
         case "watching": .ink
@@ -439,7 +460,7 @@ struct PanelView: View {
     }
 
     private var stripText: String {
-        if !agent.daemonAlive { return "Stopped — press Start to edit" }
+        if !agent.isRunning { return "Stopped — press Start to edit" }
         return switch agent.state.status {
         case "processing": "Editing \(agent.state.done)/\(agent.state.total) — \(agent.state.lastFile)"
         case "watching": agent.state.total > 0
@@ -466,7 +487,7 @@ struct HomePane: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 startStop
-                if agent.daemonAlive, agent.state.status == "processing",
+                if agent.isRunning, agent.state.status == "processing",
                    agent.state.total > 0 {
                     progressCard
                 }
@@ -537,20 +558,20 @@ struct HomePane: View {
 
     private var startStop: some View {
         Button {
-            agent.daemonAlive ? agent.stopDaemon() : agent.startDaemon()
+            agent.isRunning ? agent.stopDaemon() : agent.startDaemon()
         } label: {
-            Label(agent.daemonAlive ? "Stop" : "Start editing",
-                  systemImage: agent.daemonAlive ? "stop.fill" : "play.fill")
+            Label(agent.isRunning ? "Stop" : "Start editing",
+                  systemImage: agent.isRunning ? "stop.fill" : "play.fill")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .frame(height: 46)
-                .background(agent.daemonAlive ? Color.ink : Color.dbBlue,
+                .background(agent.isRunning ? Color.ink : Color.dbBlue,
                             in: .capsule)
         }
         .buttonStyle(.plain)
         .keyboardShortcut(.defaultAction)
-        .accessibilityLabel(agent.daemonAlive ? "Stop" : "Start editing")
+        .accessibilityLabel(agent.isRunning ? "Stop" : "Start editing")
     }
 
     private var dropArea: some View {
