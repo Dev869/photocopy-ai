@@ -221,15 +221,24 @@ def process_wave(paths, cfg, looks):
     phase("exporting…", done=len(paths))
     out_dir = os.path.expanduser(cfg.get("export_dir") or default_export_dir(cfg["watch_dir"]))
     os.makedirs(out_dir, exist_ok=True)
+    fmt = cfg.get("export_format", "raw")   # "raw" (raw+sidecar, for LR) | "jpeg" (proof render)
+    quality = int(cfg.get("jpeg_quality", 90))
+    if fmt == "jpeg":
+        from preview import render_raw_jpeg
+        from mine import parse_settings
     for p in sorted(keep):
         xmp = os.path.splitext(p)[0] + ".xmp"
-        if p.lower().endswith(JPEG_EXTS) and os.path.exists(xmp):
+        if fmt == "jpeg" and os.path.exists(xmp):
+            out = os.path.join(out_dir, os.path.splitext(os.path.basename(p))[0] + ".jpg")
+            render_raw_jpeg(p, parse_settings(xmp), out, quality)
+        elif p.lower().endswith(JPEG_EXTS) and os.path.exists(xmp):
             embed_xmp_jpeg(p, open(xmp).read(), out_dir)
         else:
             place(p, out_dir)
             if os.path.exists(xmp):
                 place(xmp, out_dir)
-    log(f"exported {len(keep)} raws + sidecars -> {out_dir}")
+    log(f"exported {len(keep)} {'proof JPEGs' if fmt == 'jpeg' else 'raws + sidecars'}"
+        f" -> {out_dir}")
     event("done", f"Finished — {len(keep)} of {len(paths)} photos exported to "
           + os.path.basename(out_dir))
     notify(f"Done: {len(keep)} of {len(paths)} photos edited and exported"

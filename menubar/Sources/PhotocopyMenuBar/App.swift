@@ -52,6 +52,8 @@ struct DaemonConfig: Codable {
     var cull = false
     var cullTarget: Int?
     var sendToLightroom = true
+    var exportFormat = "raw"      // "raw" (raw+sidecar, for Lightroom) | "jpeg" (proof render)
+    var jpegQuality = 90
     var paused = false
 
     enum CodingKeys: String, CodingKey {
@@ -59,6 +61,25 @@ struct DaemonConfig: Codable {
         case watchDir = "watch_dir"
         case cullTarget = "cull_target"
         case sendToLightroom = "send_to_lightroom"
+        case exportFormat = "export_format"
+        case jpegQuality = "jpeg_quality"
+    }
+
+    init() {}
+
+    // Tolerant decode: a config.json written before a field existed must not
+    // throw (which would silently reset every other saved setting on upgrade).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        watchDir = try c.decodeIfPresent(String.self, forKey: .watchDir)
+        look = try c.decodeIfPresent(String.self, forKey: .look)
+        edit = try c.decodeIfPresent(Bool.self, forKey: .edit) ?? true
+        cull = try c.decodeIfPresent(Bool.self, forKey: .cull) ?? false
+        cullTarget = try c.decodeIfPresent(Int.self, forKey: .cullTarget)
+        sendToLightroom = try c.decodeIfPresent(Bool.self, forKey: .sendToLightroom) ?? true
+        exportFormat = try c.decodeIfPresent(String.self, forKey: .exportFormat) ?? "raw"
+        jpegQuality = try c.decodeIfPresent(Int.self, forKey: .jpegQuality) ?? 90
+        paused = try c.decodeIfPresent(Bool.self, forKey: .paused) ?? false
     }
 }
 
@@ -421,6 +442,7 @@ struct HomePane: View {
                 if agent.config.edit {
                     profileRow
                 }
+                exportRow
                 Toggle("Open in Lightroom when done", isOn: $agent.config.sendToLightroom)
                     .onChange(of: agent.config.sendToLightroom) { agent.saveConfig() }
                 if !agent.thumbs.isEmpty {
@@ -428,6 +450,33 @@ struct HomePane: View {
                 }
             }
             .padding(16)
+        }
+    }
+
+    private var exportRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("Export", selection: $agent.config.exportFormat) {
+                Text("Raw + sidecar").tag("raw")
+                Text("JPEG proof").tag("jpeg")
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: agent.config.exportFormat) { agent.saveConfig() }
+            if agent.config.exportFormat == "jpeg" {
+                HStack(spacing: 10) {
+                    Text("Quality \(agent.config.jpegQuality)")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.inkSecondary)
+                        .monospacedDigit()
+                    Slider(value: Binding(
+                        get: { Double(agent.config.jpegQuality) },
+                        set: { agent.config.jpegQuality = Int($0) }
+                    ), in: 50...100, step: 5)
+                        .onChange(of: agent.config.jpegQuality) { agent.saveConfig() }
+                }
+                Text("Approximate proof render — not a Lightroom-exact match.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.inkSecondary)
+            }
         }
     }
 
