@@ -1,7 +1,12 @@
-"""Approximate LR-slider rendering for preview thumbnails.
+"""Approximate LR-slider rendering.
 
-Not color-exact — a directional preview of the predicted edit (exposure, WB,
-contrast, highlights/shadows, vibrance/saturation) applied to the 640px proxy.
+Not color-exact — a directional render of the predicted edit (exposure, WB,
+contrast, highlights/shadows, vibrance/saturation) applied to an image. Skips the
+Look, tone curve, HSL, camera profile, and masks the sidecar carries, so it's a
+proof, not a delivery-grade match to Lightroom.
+
+render()          -> small thumbnail (menu-bar previews)
+render_raw_jpeg() -> full-resolution proof JPEG for export (quality configurable)
 """
 import numpy as np
 from PIL import Image
@@ -14,12 +19,9 @@ def f(settings, key, scale=1.0):
         return 0.0
 
 
-def render(proxy_path, settings, out_path, long_side=420):
-    img = Image.open(proxy_path).convert("RGB")
-    img.thumbnail((long_side, long_side))
-    x = np.asarray(img, dtype=np.float32) / 255.0
+def apply_edit(x, settings):
+    """x: float32 sRGB RGB array in [0,1]. Returns the adjusted array in [0,1]."""
     lin = x ** 2.2
-
     lin = lin * (2.0 ** f(settings, "Exposure2012"))
 
     temp = f(settings, "Temperature")
@@ -51,5 +53,28 @@ def render(proxy_path, settings, out_path, long_side=420):
     if sat != 1:
         mean = x.mean(axis=-1, keepdims=True)
         x = np.clip(mean + (x - mean) * sat, 0, 1)
+    return x
 
+
+def render(proxy_path, settings, out_path, long_side=420):
+    img = Image.open(proxy_path).convert("RGB")
+    img.thumbnail((long_side, long_side))
+    x = np.asarray(img, dtype=np.float32) / 255.0
+    x = apply_edit(x, settings)
     Image.fromarray((x * 255).astype(np.uint8)).save(out_path, "JPEG", quality=88)
+
+
+def render_raw_jpeg(src_path, settings, out_path, quality=90):
+    """Full-resolution proof JPEG. src is a raw (rawpy-decoded, camera WB) or a
+    JPEG (used directly). quality is JPEG 1-100 (higher = larger, less compressed)."""
+    if src_path.lower().endswith((".jpg", ".jpeg", ".png")):
+        img = Image.open(src_path).convert("RGB")
+        arr = np.asarray(img, dtype=np.float32) / 255.0
+    else:
+        import rawpy
+        with rawpy.imread(src_path) as r:
+            rgb = r.postprocess(use_camera_wb=True, output_bps=8, no_auto_bright=True)
+        arr = rgb.astype(np.float32) / 255.0
+    x = apply_edit(arr, settings)
+    Image.fromarray((x * 255).astype(np.uint8)).save(
+        out_path, "JPEG", quality=int(quality), subsampling=0 if quality >= 90 else 2)

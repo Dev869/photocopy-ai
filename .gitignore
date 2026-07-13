@@ -51,3 +51,6 @@ work/settings_norm
 
 # Public datasets (huge, external)
 work/data/
+
+work/events.jsonl
+.claude/

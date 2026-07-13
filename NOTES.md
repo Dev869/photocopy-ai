@@ -279,3 +279,16 @@ Fix: `agent.py` heartbeat thread refreshes state.json's timestamp every 2s
 regardless of phase, so "fresh" reliably means "alive". Verified end-to-end:
 warm-up staleness 7s -> 1.3s max; bar stays visible; no duplicate spawns.
 Daemon-only change — no app rebuild (shell reads agent.py from disk).
+
+## Export format + JPEG quality + faithful-export follow-up (2026-07-12)
+- Export now configurable: raw+sidecar (default, for Lightroom) OR proof JPEG.
+  agent.py export honors config export_format + jpeg_quality; preview.render_raw_jpeg
+  renders a full-res JPEG (rawpy decode → shared apply_edit slider math → quality).
+- Menu bar: segmented Export picker + quality slider (App.swift exportRow), shown
+  when JPEG. DaemonConfig got a tolerant init(from:) so old config.json files don't
+  reset every setting when a new field appears.
+- The "Open in Lightroom when done" toggle already existed (send_to_lightroom) —
+  it just never fired because the export step kept dying pre-heartbeat-fix.
+- Honest scope: proof JPEG is an APPROXIMATE render (exposure/WB/tone/color only;
+  no Look/curves/HSL/profile/masks). TODO (user asked, deferred): Lightroom-faithful
+  JPEG export by driving LR's own export/auto-import — matches delivery quality.
