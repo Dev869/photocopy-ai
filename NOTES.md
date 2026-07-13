@@ -408,3 +408,12 @@ in that direction instead, which becomes a new Look natively).
 - Open: PPR10K -> Engine B external-expert ingest (config.xmp sliders + before
   .jpg embeddings) via train_head(external=...) — measure, don't assume (FiveK
   lesson); fit LUTs for remaining looks; download continues in background.
+
+## PPR10K -> Engine B: measured and shipped (2026-07-12)
+Ingested 834 PPR10K images (HF mirror pilot; download resumable for the rest):
+before.jpg SigLIP embeddings + lum phot (EV neutral 10.0) + PV2012 sliders from
+config.xmp -> data/ppr10k/eng, one "PPR10K" preset token, train-only rows.
+3-fold vs Devin-only: temp 975->945 (-30K, the weak axis), contrast -1.4,
+exposure +0.03 (noise). Mild but positive where FiveK actively hurt — shipped:
+`train_head.py --ppr10k` (deployed checkpoint now 16 presets incl PPR10K).
+Scaling to the full 11K may help more; download continues on demand.

@@ -212,7 +212,12 @@ def compare_engines(d, tr, va, b_mae):
 if __name__ == "__main__":
     if os.path.basename(os.getcwd()) != "work":
         os.chdir(os.path.dirname(__file__))
-    train(compare="--compare" in sys.argv)
+    ext = []
+    if "--ppr10k" in sys.argv:  # public expert anchors (measured: temp -30K, contrast -1.4)
+        import presets
+        presets.register_external("PPR10K")
+        ext = ["data/ppr10k/eng"]
+    train(compare="--compare" in sys.argv, external=ext)
 
 
 def load_head(ckpt=CKPT, device=None):
