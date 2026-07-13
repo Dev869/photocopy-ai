@@ -292,3 +292,54 @@ Daemon-only change — no app rebuild (shell reads agent.py from disk).
 - Honest scope: proof JPEG is an APPROXIMATE render (exposure/WB/tone/color only;
   no Look/curves/HSL/profile/masks). TODO (user asked, deferred): Lightroom-faithful
   JPEG export by driving LR's own export/auto-import — matches delivery quality.
+
+## Fix: blank Activity + "nothing happens" on already-edited folders (2026-07-12)
+Two separate causes behind "bar still missing, activity not updating":
+1. Activity was blank because work/events.jsonl got DELETED from disk: PR #4
+   untracked it with `git rm --cached`, and pulling that commit into main applied
+   the recorded deletion to the working tree. Restored (history lost, seeded with
+   a note); it's gitignored now so git can never touch it again.
+2. No bar because there was genuinely nothing to process: every NEF in the watch
+   folder already had a sidecar, and the daemon skips edited raws by design. The
+   UI just never said so — "watching, 0 pending" looked identical to broken.
+   Fix: pending_raws now also returns the already-edited count, daemon reports it
+   in state (edited), and the status strip says "All N photos already edited —
+   drop in new ones". DaemonState.edited is optional so old state.json decodes.
+Verified live: wave on a fresh NEF held status=processing through warm-up (bar
+visible), events feed appended start/photo/done, cory-test idle state reads
+edited: 40. To re-edit an already-edited folder, delete its .xmp sidecars.
+
+## Menu-bar overflow escape hatch (2026-07-12)
+macOS silently hides status items when the menu bar is full (notch MacBooks
+especially) — and a hidden icon made this menu-bar-only app unreachable.
+Can't force the icon visible (OS behavior). Fix: re-opening Photocopy.app
+(Spotlight/Finder/Dock) now shows the panel as a regular 460x520 window —
+AppDelegate.applicationShouldHandleReopen -> NSHostingController(PanelView).
+Agent became a shared singleton so the window and the menu panel drive the SAME
+agent (two instances would each supervise/spawn daemons). Verified: first launch
+0 windows, reopen 1 window, still exactly 1 daemon.
+
+## Fix: "keeps starting even though I tell it not to" (2026-07-12)
+Stop never persisted intent — it only killed the process. Three compounding bugs:
+(1) config.paused was never written by the app, so nothing on disk recorded the
+user's "no"; any revived daemon resumed editing. (2) After Stop, poll() re-read
+state.json whose timestamp the dead daemon had just refreshed (heartbeat), so
+the UI flipped back to "running" for up to 8s — Stop looked ignored. (3) The
+Start/Stop button toggled on that flickering liveness bit, so a click during the
+flicker could land as Start and spawn a real daemon (observed: app-spawned
+daemon at 19:47:45). Some phantom starts were also detached test daemons the
+app had no Process handle for.
+Fix: config.paused is the source of truth. Stop = paused:true + kill; Start =
+paused:false + spawn. UI "running" = daemonAlive && !paused (config is local,
+no flicker). App quit kills all daemons (terminate + pkill, catching strays).
+Verified: paused daemon idles with pending photos; unpause processes; quit
+leaves nothing running. Deployed stopped-by-default per the user's intent.
+
+## Re-edit an already-edited batch (2026-07-12)
+Start (or picking/dropping a folder) now scans the folder app-side; if every
+photo already has a sidecar, an alert says "All N photos already edited" with
+Re-edit N photos / Watch for new photos only / Cancel. Re-edit deletes our
+.xmp/.acr sidecars (exported copies are hardlinks — untouched) and starts the
+daemon, whose normal pending logic re-processes the batch. Verified with the
+real daemon: fresh sidecar written (hash changed) after the delete+unpause
+sequence the button performs. Idle strip now says "press Start to re-edit".
