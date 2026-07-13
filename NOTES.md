@@ -263,3 +263,19 @@ benchmark decide (per the plan). Verdict: FiveK does not help this engine.
   needs data in the right parameter space, which neither public set provides.
 - `work/data/fivek/fivek_dataset.tar` (47 GB) can be deleted — re-downloadable;
   only useful later for an image-to-image engine, a different design.
+
+## Fix: progress bar vanished / "not processing" — daemon heartbeat (2026-07-12)
+Symptom: loading bar not showing for some waves; NEFs seemed not to process.
+Root cause (not a processing bug — a liveness bug): the shell's `daemonAlive`
+is "state.json written in the last 8s". The daemon only wrote state on per-file
+progress, so its silent warm-up window — `import predict` + `load_model`
+(SigLIP2) measured ~7s and network-variable via the HF hub check — routinely
+neared/passed 8s. A busy daemon was judged dead, which (a) hid the progress bar
+(gated on daemonAlive, App.swift:415) and (b) let the supervisor treat it as
+stale and spawn a duplicate that raced on the same folder (the 12+ "daemon up"
+restarts in agent.log). Per-file work is fast (~0.25s/NEF), so the bar showed
+mid-wave but not during warm-up.
+Fix: `agent.py` heartbeat thread refreshes state.json's timestamp every 2s
+regardless of phase, so "fresh" reliably means "alive". Verified end-to-end:
+warm-up staleness 7s -> 1.3s max; bar stays visible; no duplicate spawns.
+Daemon-only change — no app rebuild (shell reads agent.py from disk).

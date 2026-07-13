@@ -7,7 +7,7 @@ IPC with the menu-bar shell is two JSON files in this directory:
                                 "watch_dir", "looks", "updated"}
 Run: .venv/bin/python agent.py
 """
-import glob, json, os, time, traceback
+import glob, json, os, threading, time, traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG = os.path.join(HERE, "config.json")
@@ -52,10 +52,32 @@ def read_config():
         return {}
 
 
-def write_state(**kw):
-    kw["updated"] = time.time()
-    json.dump(kw, open(STATE + ".tmp", "w"))
+_state_lock = threading.Lock()
+_last_state = {}
+
+
+def _write_state_locked(kw):
+    payload = dict(kw, updated=time.time())
+    json.dump(payload, open(STATE + ".tmp", "w"))
     os.replace(STATE + ".tmp", STATE)
+
+
+def write_state(**kw):
+    with _state_lock:
+        _last_state.clear()
+        _last_state.update(kw)
+        _write_state_locked(kw)
+
+
+def heartbeat():
+    """Refresh state.json's timestamp every 2s so the shell's liveness check
+    (state fresh within 8s) can't mistake a busy daemon — model load, a slow
+    file — for a dead one, which hid the progress bar and spawned duplicates."""
+    while True:
+        time.sleep(2)
+        with _state_lock:
+            if _last_state:
+                _write_state_locked(_last_state)
 
 
 def available_looks():
@@ -225,6 +247,7 @@ def process_wave(paths, cfg, looks):
 def run():
     os.chdir(HERE)
     looks = available_looks()
+    threading.Thread(target=heartbeat, daemon=True).start()
     log("daemon up")
     prev_pending = []
     while True:
