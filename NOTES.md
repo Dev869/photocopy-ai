@@ -343,3 +343,77 @@ Re-edit N photos / Watch for new photos only / Cancel. Re-edit deletes our
 daemon, whose normal pending logic re-processes the batch. Verified with the
 real daemon: fresh sidecar written (hash changed) after the delete+unpause
 sequence the button performs. Idle strip now says "press Start to re-edit".
+
+## Render fidelity + VLM audit second pass (2026-07-12)
+User: "edits not coming out how I wanted" — judged from proof JPEGs, symptoms
+too dark + wrong style. Diagnosis (measured, WIL_5168 @ +3.66 EV): proof render
+mean 16/255 — nearly black. Root cause: exposure applied to 8-BIT GAMMA data;
+Devin shoots dark (raw mean 10/255), so shadows are quantization-crushed before
+the lift. Style absent by design (Looks are LR LUTs; proofs can't apply them).
+- Fix 1: render_raw_jpeg decodes 16-bit LINEAR (rawpy gamma=(1,1)), exposure/WB/
+  tone applied in linear, LR-ish soft highlight shoulder (knee 0.8) instead of
+  hard clip, + fixed +0.45 EV camera baseline (D750 BaselineExposure approx;
+  read from EXIF per-body if other cameras trend dark). Result: mean 16 -> 75-105,
+  blown <2.2%. apply_edit split: apply_edit_linear is the core; 8-bit path
+  degammas into it (thumbs still 8-bit-limited; audit replaces them, below).
+- Fix 2 (user request): VLM audit second pass. agent.py, when config.audit:
+  after thumbs, per keeper: accurate 1024px linear render -> vlm.assess ->
+  audit_sidecar folds {exposure_ev, temp_shift, tint_shift} into the sidecar
+  in place (hardlinks share the inode) when above deadband (0.3 EV / 300 K / 5
+  tint); Temp/Tint only when WB=Custom; re-renders; events "Audit fixed ...".
+  Audit render replaces the proxy-thumb (more accurate preview grid for free).
+  UI: "AI audit pass" toggle (config.audit). E2E: 2-img wave -> 1 fixed (+0.5 EV),
+  1 under deadband, exports rendered post-fix. ~4s/img on M5 Max.
+- Honest caveats: proofs still can't show Looks (LR LUTs) — style judgment needs
+  LR or the deferred LR-faithful export. Audit currently trusts the approximate
+  render; deadband + clamps bound the damage. Not yet measured against Devin's
+  ground truth (the holdout eval from Engine B applies — TODO).
+- Also possible cause of "wrong style": config had no Look set -> retrieval
+  blends across all 12 historical looks and the nearest neighbor's Look wins.
+  Set the Profile in the app per shoot.
+
+## Fix: "Re-edit" click closed the panel and did nothing (2026-07-12)
+Evidence: app process alive, sidecars untouched, still paused — the click never
+executed. Cause: SwiftUI .alert inside a window-style MenuBarExtra steals key
+status; the panel auto-dismisses on losing focus and the alert's presentation
+context dies with it, so buttons never fire. Fix: app-modal NSAlert (AppKit)
+for the re-edit confirmation — modal survives the panel closing; first button
+marked destructive. Removed the .alert modifier + its @State. Lesson recorded:
+no SwiftUI presentation modifiers (.alert/.sheet/.confirmationDialog) inside
+the MenuBarExtra panel — use NSAlert/NSOpenPanel (chooseFolder already does).
+
+## Style in proofs + grounded audit + legit public data (2026-07-12)
+User: proofs fixed exposure but not "my style"; also asked the LLM to learn
+from public wedding data (declined scraping a named competitor's portfolio —
+copyrighted client work, not a dataset; suggested hand-editing a few own photos
+in that direction instead, which becomes a new Look natively).
+- config.look default = "Modern 08" (was unset -> retrieval mixed all 12 looks;
+  biggest single cause of "wrong style" sidecars).
+- Looks are LR LUTs proofs can't apply -> fitted per-Look transforms from LR's
+  OWN renders: look_lut.py content-matches catalog preview JPEGs (mapping db is
+  dead) to indexed assets via SigLIP (cos>=0.88), renders our sliders-only
+  version per pair, fits per-channel quantile-transfer LUTs (256-entry).
+  Modern 08: 261 pairs, shift +14R +4G -2B (warm lift). index/look_luts.npz;
+  applied in preview.render/render_raw_jpeg via look= (agent passes
+  look_from_xmp(sidecar)). Fit other looks: `look_lut.py "Artistic 05"`.
+- Audit grounding: PPR10K via HF mirror JarvisArt/MMArt-PPR10k (apache-2.0!)
+  has before.jpg + processed.jpg + config.xmp per image — and the XMPs are
+  PV2012 (Exposure2012/HSL, ProcessVersion 11.0): the properly-aligned public
+  expert data FiveK wasn't. Pilot subset -> work/data/ppr10k (gitignored).
+  vlm.assess(refs=...) shows expert exemplars before the candidate; agent picks
+  2 per image from the pool. Gotcha: multi-image >640px returns EMPTY output
+  (vision-token budget) -> assess downscales working copies to 640.
+- Audit prompt hardened: only objective errors; the photographer's stylistic
+  grading is deliberate — do not correct style; zeros when in doubt.
+- Open: PPR10K -> Engine B external-expert ingest (config.xmp sliders + before
+  .jpg embeddings) via train_head(external=...) — measure, don't assume (FiveK
+  lesson); fit LUTs for remaining looks; download continues in background.
+
+## PPR10K -> Engine B: measured and shipped (2026-07-12)
+Ingested 834 PPR10K images (HF mirror pilot; download resumable for the rest):
+before.jpg SigLIP embeddings + lum phot (EV neutral 10.0) + PV2012 sliders from
+config.xmp -> data/ppr10k/eng, one "PPR10K" preset token, train-only rows.
+3-fold vs Devin-only: temp 975->945 (-30K, the weak axis), contrast -1.4,
+exposure +0.03 (noise). Mild but positive where FiveK actively hurt — shipped:
+`train_head.py --ppr10k` (deployed checkpoint now 16 presets incl PPR10K).
+Scaling to the full 11K may help more; download continues on demand.

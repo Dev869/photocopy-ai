@@ -157,7 +157,7 @@ THUMBS = os.path.join(HERE, "thumbs")
 def render_thumbs(paths):
     import shutil
     from mine import parse_settings
-    from preview import render
+    from preview import look_from_xmp, render
     shutil.rmtree(THUMBS, ignore_errors=True)
     os.makedirs(THUMBS, exist_ok=True)
     for p in paths:
@@ -169,7 +169,8 @@ def render_thumbs(paths):
         if not (os.path.exists(proxy) and os.path.exists(xmp)):
             continue
         try:
-            render(proxy, parse_settings(xmp), os.path.join(THUMBS, stem + ".jpg"))
+            render(proxy, parse_settings(xmp), os.path.join(THUMBS, stem + ".jpg"),
+                   look=look_from_xmp(xmp))
         except Exception:
             pass
 
@@ -224,19 +225,59 @@ def process_wave(paths, cfg, looks):
         phase("rendering previews…", done=len(paths))
         render_thumbs(sorted(keep))
 
+    if do_edit and cfg.get("audit"):
+        import random
+        import vlm
+        from mine import parse_settings
+        from preview import look_from_xmp, render_raw_jpeg
+        os.makedirs(THUMBS, exist_ok=True)
+        # expert-edited exemplars (PPR10K, research wedding/portrait set) ground
+        # the auditor's idea of "well edited"; without them it judges zero-shot
+        ref_pool = sorted(glob.glob(os.path.join(
+            HERE, "data/ppr10k/global/*/processed.jpg")))[:400]
+        event("start", f"Audit pass: reviewing {len(keep)} edits"
+              + (f" against {min(2, len(ref_pool))} expert references" if ref_pool else ""))
+        n_fixed = 0
+        for i, p in enumerate(sorted(keep)):
+            xmp = os.path.splitext(p)[0] + ".xmp"
+            if not os.path.exists(xmp):
+                continue
+            stem = os.path.splitext(os.path.basename(p))[0]
+            phase(f"auditing {stem}…", done=i)
+            arender = os.path.join(THUMBS, stem + ".jpg")
+            try:
+                # accurate linear-path render doubles as the preview thumb
+                render_raw_jpeg(p, parse_settings(xmp), arender, quality=85,
+                                long_side=1024, look=look_from_xmp(xmp))
+                refs = (random.Random(stem).sample(ref_pool, 2)
+                        if len(ref_pool) >= 2 else ())
+                fixes = vlm.audit_sidecar(xmp, arender, refs=refs)
+                if fixes:
+                    reason = fixes.pop("reason", "")
+                    render_raw_jpeg(p, parse_settings(xmp), arender, quality=85,
+                                    long_side=1024)  # re-render with the fix
+                    n_fixed += 1
+                    event("audit", f"Audit fixed {stem}: "
+                          + ", ".join(f"{k} {v}" for k, v in fixes.items())
+                          + (f" — {reason}" if reason else ""))
+            except Exception as e:
+                log(f"audit skip {stem}: {type(e).__name__}: {e}")
+        event("done", f"Audit done: {n_fixed} of {len(keep)} edits adjusted")
+
     phase("exporting…", done=len(paths))
     out_dir = os.path.expanduser(cfg.get("export_dir") or default_export_dir(cfg["watch_dir"]))
     os.makedirs(out_dir, exist_ok=True)
     fmt = cfg.get("export_format", "raw")   # "raw" (raw+sidecar, for LR) | "jpeg" (proof render)
     quality = int(cfg.get("jpeg_quality", 90))
     if fmt == "jpeg":
-        from preview import render_raw_jpeg
+        from preview import look_from_xmp, render_raw_jpeg
         from mine import parse_settings
     for p in sorted(keep):
         xmp = os.path.splitext(p)[0] + ".xmp"
         if fmt == "jpeg" and os.path.exists(xmp):
             out = os.path.join(out_dir, os.path.splitext(os.path.basename(p))[0] + ".jpg")
-            render_raw_jpeg(p, parse_settings(xmp), out, quality)
+            render_raw_jpeg(p, parse_settings(xmp), out, quality,
+                            look=look_from_xmp(xmp))
         elif p.lower().endswith(JPEG_EXTS) and os.path.exists(xmp):
             embed_xmp_jpeg(p, open(xmp).read(), out_dir)
         else:
