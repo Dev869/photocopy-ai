@@ -8,6 +8,8 @@ proof, not a delivery-grade match to Lightroom.
 render()          -> small thumbnail (menu-bar previews)
 render_raw_jpeg() -> full-resolution proof JPEG for export (quality configurable)
 """
+import os
+
 import numpy as np
 from PIL import Image
 
@@ -70,15 +72,44 @@ def apply_edit(x, settings):
     return apply_edit_linear(x ** 2.2, settings)
 
 
-def render(proxy_path, settings, out_path, long_side=420):
+def render(proxy_path, settings, out_path, long_side=420, look=None):
     img = Image.open(proxy_path).convert("RGB")
     img.thumbnail((long_side, long_side))
     x = np.asarray(img, dtype=np.float32) / 255.0
     x = apply_edit(x, settings)
+    x = apply_look_lut(x, look)
     Image.fromarray((x * 255).astype(np.uint8)).save(out_path, "JPEG", quality=88)
 
 
-def render_raw_jpeg(src_path, settings, out_path, quality=90, long_side=None):
+import re as _re
+
+_LUTS = None
+
+
+def look_from_xmp(xmp_path):
+    """The Look (creative profile) name a sidecar carries, or None."""
+    m = _re.search(r'<crs:Look>.*?crs:Name="([^"]+)"', open(xmp_path).read(), _re.S)
+    return m.group(1) if m else None
+
+
+def apply_look_lut(x, look):
+    """Approximate a Lightroom Look via per-channel LUTs fitted from LR's own
+    renders (look_lut.py). x: float gamma RGB [0,1]. No LUT for the look = no-op."""
+    global _LUTS
+    if _LUTS is None:
+        _LUTS = dict(np.load("index/look_luts.npz")) if os.path.exists(
+            "index/look_luts.npz") else {}
+    lut = _LUTS.get(look)
+    if lut is None:
+        return x
+    xi = (np.clip(x, 0, 1) * 255).astype(np.uint8)
+    out = np.empty_like(xi)
+    for c in range(3):
+        out[..., c] = lut[c][xi[..., c]]
+    return out.astype(np.float32) / 255.0
+
+
+def render_raw_jpeg(src_path, settings, out_path, quality=90, long_side=None, look=None):
     """Proof JPEG from the 16-bit linear path. src is a raw (rawpy-decoded,
     camera WB) or a JPEG (used directly). quality is JPEG 1-100; long_side
     optionally downscales the output (e.g. 1024 for VLM audit renders)."""
@@ -98,6 +129,7 @@ def render_raw_jpeg(src_path, settings, out_path, quality=90, long_side=None):
         # from EXIF if renders still trend dark across bodies
         lin = rgb.astype(np.float32) / 65535.0 * (2.0 ** 0.45)
         x = apply_edit_linear(lin, settings)
+    x = apply_look_lut(x, look)
     img = Image.fromarray((x * 255).astype(np.uint8))
     if long_side:
         img.thumbnail((long_side, long_side))

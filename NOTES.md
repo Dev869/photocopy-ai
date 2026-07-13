@@ -381,3 +381,30 @@ for the re-edit confirmation — modal survives the panel closing; first button
 marked destructive. Removed the .alert modifier + its @State. Lesson recorded:
 no SwiftUI presentation modifiers (.alert/.sheet/.confirmationDialog) inside
 the MenuBarExtra panel — use NSAlert/NSOpenPanel (chooseFolder already does).
+
+## Style in proofs + grounded audit + legit public data (2026-07-12)
+User: proofs fixed exposure but not "my style"; also asked the LLM to learn
+from public wedding data (declined scraping a named competitor's portfolio —
+copyrighted client work, not a dataset; suggested hand-editing a few own photos
+in that direction instead, which becomes a new Look natively).
+- config.look default = "Modern 08" (was unset -> retrieval mixed all 12 looks;
+  biggest single cause of "wrong style" sidecars).
+- Looks are LR LUTs proofs can't apply -> fitted per-Look transforms from LR's
+  OWN renders: look_lut.py content-matches catalog preview JPEGs (mapping db is
+  dead) to indexed assets via SigLIP (cos>=0.88), renders our sliders-only
+  version per pair, fits per-channel quantile-transfer LUTs (256-entry).
+  Modern 08: 261 pairs, shift +14R +4G -2B (warm lift). index/look_luts.npz;
+  applied in preview.render/render_raw_jpeg via look= (agent passes
+  look_from_xmp(sidecar)). Fit other looks: `look_lut.py "Artistic 05"`.
+- Audit grounding: PPR10K via HF mirror JarvisArt/MMArt-PPR10k (apache-2.0!)
+  has before.jpg + processed.jpg + config.xmp per image — and the XMPs are
+  PV2012 (Exposure2012/HSL, ProcessVersion 11.0): the properly-aligned public
+  expert data FiveK wasn't. Pilot subset -> work/data/ppr10k (gitignored).
+  vlm.assess(refs=...) shows expert exemplars before the candidate; agent picks
+  2 per image from the pool. Gotcha: multi-image >640px returns EMPTY output
+  (vision-token budget) -> assess downscales working copies to 640.
+- Audit prompt hardened: only objective errors; the photographer's stylistic
+  grading is deliberate — do not correct style; zeros when in doubt.
+- Open: PPR10K -> Engine B external-expert ingest (config.xmp sliders + before
+  .jpg embeddings) via train_head(external=...) — measure, don't assume (FiveK
+  lesson); fit LUTs for remaining looks; download continues in background.
