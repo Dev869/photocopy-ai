@@ -55,10 +55,11 @@ struct DaemonConfig: Codable {
     var sendToLightroom = true
     var exportFormat = "raw"      // "raw" (raw+sidecar, for Lightroom) | "jpeg" (proof render)
     var jpegQuality = 90
+    var audit = false             // VLM second pass: review each edit, fix exposure/WB
     var paused = false
 
     enum CodingKeys: String, CodingKey {
-        case look, edit, cull, paused
+        case look, edit, cull, paused, audit
         case watchDir = "watch_dir"
         case cullTarget = "cull_target"
         case sendToLightroom = "send_to_lightroom"
@@ -80,6 +81,7 @@ struct DaemonConfig: Codable {
         sendToLightroom = try c.decodeIfPresent(Bool.self, forKey: .sendToLightroom) ?? true
         exportFormat = try c.decodeIfPresent(String.self, forKey: .exportFormat) ?? "raw"
         jpegQuality = try c.decodeIfPresent(Int.self, forKey: .jpegQuality) ?? 90
+        audit = try c.decodeIfPresent(Bool.self, forKey: .audit) ?? false
         paused = try c.decodeIfPresent(Bool.self, forKey: .paused) ?? false
     }
 }
@@ -557,6 +559,9 @@ struct HomePane: View {
                     profileRow
                 }
                 exportRow
+                Toggle("AI audit pass — review & fix each edit (slower)",
+                       isOn: $agent.config.audit)
+                    .onChange(of: agent.config.audit) { agent.saveConfig() }
                 Toggle("Open in Lightroom when done", isOn: $agent.config.sendToLightroom)
                     .onChange(of: agent.config.sendToLightroom) { agent.saveConfig() }
                 if !agent.thumbs.isEmpty {

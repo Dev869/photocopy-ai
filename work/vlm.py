@@ -68,14 +68,84 @@ def assess(proxy_path):
     return None
 
 
+# second pass: corrections below these thresholds are noise, not fixes
+DEADBAND = {"exposure_ev": 0.3, "temp_shift": 300, "tint_shift": 5}
+
+
+def _set_attr(text, key, value, fmt):
+    txt = fmt(value)
+    text, n = re.subn(f'crs:{key}="[^"]*"', f'crs:{key}="{txt}"', text)
+    if n == 0:
+        text = text.replace('crs:ProcessVersion=',
+                            f'crs:{key}="{txt}"\n   crs:ProcessVersion=', 1)
+    return text
+
+
+def audit_sidecar(xmp_path, render_path):
+    """Second pass: assess a rendered edit, fold significant corrections back
+    into the sidecar (in place — exported hardlinks share the inode). Temp/Tint
+    only when WB is Custom (else LR honors the preset, not Kelvin). Returns the
+    applied changes ({} = nothing significant)."""
+    d = assess(render_path)
+    if not d:
+        return {}
+    text = open(xmp_path).read()
+    fixes = {}
+    ev = d.get("exposure_ev", 0.0)
+    if abs(ev) >= DEADBAND["exposure_ev"]:
+        m = re.search(r'crs:Exposure2012="([^"]*)"', text)
+        new = max(-5.0, min(5.0, (float(m.group(1)) if m else 0.0) + ev))
+        text = _set_attr(text, "Exposure2012", new, lambda v: f"{v:+.2f}")
+        fixes["Exposure2012"] = round(new, 2)
+    if 'crs:WhiteBalance="Custom"' in text:
+        ts = d.get("temp_shift", 0)
+        m = re.search(r'crs:Temperature="([^"]*)"', text)
+        if m and abs(ts) >= DEADBAND["temp_shift"]:
+            new = int(max(2000, min(50000, float(m.group(1)) + ts)))
+            text = _set_attr(text, "Temperature", new, lambda v: f"{v}")
+            fixes["Temperature"] = new
+        tn = d.get("tint_shift", 0)
+        m = re.search(r'crs:Tint="([^"]*)"', text)
+        if m and abs(tn) >= DEADBAND["tint_shift"]:
+            new = int(max(-150, min(150, float(m.group(1)) + tn)))
+            text = _set_attr(text, "Tint", new, lambda v: f"{v:+d}")
+            fixes["Tint"] = new
+    if fixes:
+        open(xmp_path, "w").write(text)
+        fixes["reason"] = d.get("reason", "")
+    return fixes
+
+
 def _demo():
-    """Round-trips the JSON contract without loading the model."""
+    """Round-trips the JSON contract + audit rewrite without loading the model."""
     ex = '{"exposure_ev": 3.5, "temp_shift": -9000, "tint_shift": 2, "reason": "slightly dark, cool cast"}'
     d = _parse("noise before " + ex + " noise after")
     assert d["exposure_ev"] == 2.0 and d["temp_shift"] == -1500  # clamped
     assert d["tint_shift"] == 2 and d["reason"].startswith("slightly")
     assert _parse("no json here") is None
-    print("vlm._parse contract OK")
+
+    import tempfile
+    global assess
+    real = assess
+    xmp = tempfile.NamedTemporaryFile("w", suffix=".xmp", delete=False)
+    xmp.write('<x crs:WhiteBalance="Custom"\n   crs:Exposure2012="+1.50"\n'
+              '   crs:Temperature="5000"\n   crs:Tint="+10"\n   crs:ProcessVersion="15.4"/>')
+    xmp.close()
+    try:
+        assess = lambda p: {"exposure_ev": 0.5, "temp_shift": 400, "tint_shift": 2,
+                            "reason": "test"}
+        fixes = audit_sidecar(xmp.name, "unused.jpg")
+        assert fixes["Exposure2012"] == 2.0 and fixes["Temperature"] == 5400, fixes
+        assert "Tint" not in fixes  # +2 below deadband
+        t = open(xmp.name).read()
+        assert 'crs:Exposure2012="+2.00"' in t and 'crs:Temperature="5400"' in t
+        assess = lambda p: {"exposure_ev": 0.1, "temp_shift": 50, "tint_shift": 0,
+                            "reason": ""}
+        assert audit_sidecar(xmp.name, "unused.jpg") == {}  # all under deadband
+    finally:
+        assess = real
+        os.unlink(xmp.name)
+    print("vlm._parse + audit_sidecar contracts OK")
 
 
 if __name__ == "__main__":

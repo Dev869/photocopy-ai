@@ -224,6 +224,37 @@ def process_wave(paths, cfg, looks):
         phase("rendering previews…", done=len(paths))
         render_thumbs(sorted(keep))
 
+    if do_edit and cfg.get("audit"):
+        import vlm
+        from mine import parse_settings
+        from preview import render_raw_jpeg
+        os.makedirs(THUMBS, exist_ok=True)
+        event("start", f"Audit pass: reviewing {len(keep)} edits")
+        n_fixed = 0
+        for i, p in enumerate(sorted(keep)):
+            xmp = os.path.splitext(p)[0] + ".xmp"
+            if not os.path.exists(xmp):
+                continue
+            stem = os.path.splitext(os.path.basename(p))[0]
+            phase(f"auditing {stem}…", done=i)
+            arender = os.path.join(THUMBS, stem + ".jpg")
+            try:
+                # accurate linear-path render doubles as the preview thumb
+                render_raw_jpeg(p, parse_settings(xmp), arender, quality=85,
+                                long_side=1024)
+                fixes = vlm.audit_sidecar(xmp, arender)
+                if fixes:
+                    reason = fixes.pop("reason", "")
+                    render_raw_jpeg(p, parse_settings(xmp), arender, quality=85,
+                                    long_side=1024)  # re-render with the fix
+                    n_fixed += 1
+                    event("audit", f"Audit fixed {stem}: "
+                          + ", ".join(f"{k} {v}" for k, v in fixes.items())
+                          + (f" — {reason}" if reason else ""))
+            except Exception as e:
+                log(f"audit skip {stem}: {type(e).__name__}: {e}")
+        event("done", f"Audit done: {n_fixed} of {len(keep)} edits adjusted")
+
     phase("exporting…", done=len(paths))
     out_dir = os.path.expanduser(cfg.get("export_dir") or default_export_dir(cfg["watch_dir"]))
     os.makedirs(out_dir, exist_ok=True)

@@ -343,3 +343,31 @@ Re-edit N photos / Watch for new photos only / Cancel. Re-edit deletes our
 daemon, whose normal pending logic re-processes the batch. Verified with the
 real daemon: fresh sidecar written (hash changed) after the delete+unpause
 sequence the button performs. Idle strip now says "press Start to re-edit".
+
+## Render fidelity + VLM audit second pass (2026-07-12)
+User: "edits not coming out how I wanted" — judged from proof JPEGs, symptoms
+too dark + wrong style. Diagnosis (measured, WIL_5168 @ +3.66 EV): proof render
+mean 16/255 — nearly black. Root cause: exposure applied to 8-BIT GAMMA data;
+Devin shoots dark (raw mean 10/255), so shadows are quantization-crushed before
+the lift. Style absent by design (Looks are LR LUTs; proofs can't apply them).
+- Fix 1: render_raw_jpeg decodes 16-bit LINEAR (rawpy gamma=(1,1)), exposure/WB/
+  tone applied in linear, LR-ish soft highlight shoulder (knee 0.8) instead of
+  hard clip, + fixed +0.45 EV camera baseline (D750 BaselineExposure approx;
+  read from EXIF per-body if other cameras trend dark). Result: mean 16 -> 75-105,
+  blown <2.2%. apply_edit split: apply_edit_linear is the core; 8-bit path
+  degammas into it (thumbs still 8-bit-limited; audit replaces them, below).
+- Fix 2 (user request): VLM audit second pass. agent.py, when config.audit:
+  after thumbs, per keeper: accurate 1024px linear render -> vlm.assess ->
+  audit_sidecar folds {exposure_ev, temp_shift, tint_shift} into the sidecar
+  in place (hardlinks share the inode) when above deadband (0.3 EV / 300 K / 5
+  tint); Temp/Tint only when WB=Custom; re-renders; events "Audit fixed ...".
+  Audit render replaces the proxy-thumb (more accurate preview grid for free).
+  UI: "AI audit pass" toggle (config.audit). E2E: 2-img wave -> 1 fixed (+0.5 EV),
+  1 under deadband, exports rendered post-fix. ~4s/img on M5 Max.
+- Honest caveats: proofs still can't show Looks (LR LUTs) — style judgment needs
+  LR or the deferred LR-faithful export. Audit currently trusts the approximate
+  render; deadband + clamps bound the damage. Not yet measured against Devin's
+  ground truth (the holdout eval from Engine B applies — TODO).
+- Also possible cause of "wrong style": config had no Look set -> retrieval
+  blends across all 12 historical looks and the nearest neighbor's Look wins.
+  Set the Profile in the app per shoot.
